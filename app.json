@@ -5,11 +5,16 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "trendz",
+    "scheme": [
+      "trendz",
+      "com.anonymous.trendz",
+      "com.googleusercontent.apps.1062644027964-1iq6mmqabrmb3ll7c09gh2r6fljpr27f"
+    ],
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anonymous.trendz"
     },
     "android": {
       "adaptiveIcon": {
@@ -19,7 +24,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.anonymous.trendz"
     },
     "web": {
       "output": "static",
@@ -27,6 +33,13 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Trendz to access your photos so you can choose an outfit picture.",
+          "cameraPermission": "Allow Trendz to use your camera so you can take an outfit photo."
+        }
+      ],
       [
         "expo-splash-screen",
         {
@@ -38,7 +51,8 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -3,13 +3,15 @@
 # dependencies
 node_modules/
 
-# Expo
+# Expo / bundler output
 .expo/
+.expo-shared/
 dist/
 web-build/
+build/
 expo-env.d.ts
 
-# Native
+# Native secrets / signing
 .kotlin/
 *.orig.*
 *.jks
@@ -18,26 +20,47 @@ expo-env.d.ts
 *.key
 *.mobileprovision
 
+# Native generated output
+ios/build/
+ios/Pods/
+ios/.xcode.env.local
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+
 # Metro
 .metro-health-check*
 
-# debug
+# logs
+*.log
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+pnpm-debug.log*
 
-# macOS
+# caches / temp
+.cache/
+coverage/
+tmp/
+temp/
+
+# macOS / editor
 .DS_Store
 *.pem
+.idea/
+.vscode/
+*.swp
+*.swo
 
-# local env files
-.env*.local
+# local env / secrets
+.env*
+!.env.example
 
 # typescript
 *.tsbuildinfo
 
 app-example
-
-# generated native folders
-/ios
-/android
