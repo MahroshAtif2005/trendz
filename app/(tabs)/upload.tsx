@@ -1,7 +1,8 @@
-import { type ComponentProps, useContext, useState } from 'react';
+import { type ComponentProps, useContext, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Image,
   Platform,
   Pressable,
@@ -20,10 +21,16 @@ import { router } from 'expo-router';
 import { AppContext } from '@/context/AppContext';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import {
+  buildOutfitReviewCacheKey,
+  buildOutfitReviewOwnerKey,
+  createOutfitImageFingerprint,
+} from '@/lib/outfit-review-cache';
+import {
   analyzeOutfitImage,
   getOutfitReviewConfigErrorMessage,
   getOutfitReviewTransportMode,
 } from '@/lib/outfit-review';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
 type ThemeName = 'light' | 'dark';
 type OccasionIconName = ComponentProps<typeof MaterialCommunityIcons>['name'];
@@ -314,6 +321,37 @@ const IMAGE_PICKER_OPTIONS = {
   quality: 0.9,
 } as const;
 
+const SUPPORTED_IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp']);
+const SUPPORTED_IMAGE_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+]);
+const IOS_HEIC_EXTENSIONS = new Set(['heic', 'heif']);
+const IOS_HEIC_MIME_TYPES = new Set(['image/heic', 'image/heif']);
+
+const REVIEW_STATUS_STEPS = [
+  { agent: 'Occasion Agent', message: 'Reviewing silhouette and occasion fit...' },
+  { agent: 'Trend Agent', message: 'Comparing against current Trendz picks...' },
+  {
+    agent: 'Editorial Agent',
+    message: 'Checking editorial and magazine-inspired styling cues...',
+  },
+  { agent: 'Color Agent', message: 'Evaluating color harmony and outfit balance...' },
+  { agent: 'Style Archive Agent', message: 'Matching against iconic fashion references...' },
+  {
+    agent: 'Confidence Agent',
+    message: 'Scoring confidence, polish, and trend relevance...',
+  },
+  {
+    agent: 'Explore Curator',
+    message: 'Deciding if this look is strong enough for Explore...',
+  },
+  { agent: 'Verdict Agent', message: 'Building your final fashion verdict...' },
+] as const;
+
 function logDev(message: string, details?: unknown) {
   if (!__DEV__) {
     return;
@@ -331,6 +369,163 @@ function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function getFileExtension(value?: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const withoutQuery = value.split('?')[0]?.split('#')[0] ?? value;
+  const fileName = withoutQuery.split('/').pop() ?? withoutQuery;
+  const dotIndex = fileName.lastIndexOf('.');
+
+  if (dotIndex === -1) {
+    return null;
+  }
+
+  return fileName.slice(dotIndex + 1).toLowerCase();
+}
+
+function normalizeMimeType(value?: string | null) {
+  return value?.trim().toLowerCase() ?? null;
+}
+
+function inferMimeTypeFromExtension(extension?: string | null) {
+  switch (extension) {
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'png':
+      return 'image/png';
+    case 'gif':
+      return 'image/gif';
+    case 'webp':
+      return 'image/webp';
+    case 'heic':
+      return 'image/heic';
+    case 'heif':
+      return 'image/heif';
+    default:
+      return null;
+  }
+}
+
+function buildJpegFileName(fileName?: string | null) {
+  const sourceName = fileName?.trim() || 'outfit-photo';
+  const cleanName = sourceName.replace(/\.[^/.]+$/, '');
+  return `${cleanName || 'outfit-photo'}.jpg`;
+}
+
+function formatLatestReviewTime(value: string) {
+  return new Date(value).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function formatScore(score: number) {
+  return score.toFixed(1);
+}
+
+function shouldNormalizePickedImage({
+  mimeType,
+  extension,
+}: {
+  mimeType?: string | null;
+  extension?: string | null;
+}) {
+  const normalizedMimeType = normalizeMimeType(mimeType);
+  const normalizedExtension = extension?.toLowerCase() ?? null;
+
+  if (
+    IOS_HEIC_MIME_TYPES.has(normalizedMimeType ?? '') ||
+    IOS_HEIC_EXTENSIONS.has(normalizedExtension ?? '')
+  ) {
+    return true;
+  }
+
+  if (normalizedMimeType && !SUPPORTED_IMAGE_MIME_TYPES.has(normalizedMimeType)) {
+    return true;
+  }
+
+  if (normalizedExtension && !SUPPORTED_IMAGE_EXTENSIONS.has(normalizedExtension)) {
+    return true;
+  }
+
+  if (Platform.OS === 'ios' && !normalizedMimeType && !normalizedExtension) {
+    return true;
+  }
+
+  return false;
+}
+
+async function normalizePickedImageAsset(asset: ImagePicker.ImagePickerAsset): Promise<SelectedImage> {
+  const fileExtension = getFileExtension(asset.fileName) ?? getFileExtension(asset.uri);
+  const inferredMimeType = normalizeMimeType(asset.mimeType) ?? inferMimeTypeFromExtension(fileExtension);
+  const shouldNormalize = shouldNormalizePickedImage({
+    mimeType: inferredMimeType,
+    extension: fileExtension,
+  });
+
+  logDev('picked image metadata', {
+    originalMimeType: inferredMimeType,
+    originalExtension: fileExtension,
+    originalFileName: asset.fileName ?? null,
+    shouldNormalize,
+  });
+
+  if (!shouldNormalize) {
+    const finalMimeType = inferredMimeType ?? 'image/jpeg';
+    const finalExtension = getFileExtension(asset.fileName) ?? getFileExtension(asset.uri) ?? 'jpg';
+
+    logDev('image normalization not needed', {
+      finalMimeType,
+      finalExtension,
+    });
+
+    return {
+      uri: asset.uri,
+      base64: asset.base64 ?? null,
+      mimeType: finalMimeType,
+      width: asset.width,
+      height: asset.height,
+      fileName: asset.fileName ?? null,
+    };
+  }
+
+  const targetWidth = asset.width && asset.width > 1800 ? 1800 : asset.width;
+  const actions = targetWidth ? [{ resize: { width: targetWidth } }] : [];
+
+  logDev('normalizing picked image to jpeg', {
+    sourceMimeType: inferredMimeType,
+    sourceExtension: fileExtension,
+    resizeWidth: targetWidth ?? null,
+  });
+
+  const normalizedImage = await manipulateAsync(asset.uri, actions, {
+    compress: 0.86,
+    format: SaveFormat.JPEG,
+    base64: true,
+  });
+
+  logDev('image normalization applied', {
+    finalMimeType: 'image/jpeg',
+    finalExtension: 'jpg',
+    width: normalizedImage.width,
+    height: normalizedImage.height,
+  });
+
+  return {
+    uri: normalizedImage.uri,
+    base64: normalizedImage.base64 ?? null,
+    mimeType: 'image/jpeg',
+    width: normalizedImage.width,
+    height: normalizedImage.height,
+    fileName: buildJpegFileName(asset.fileName),
+  };
+}
+
 export default function UploadScreen() {
   const appContext = useContext(AppContext);
   const colorScheme = useColorScheme();
@@ -343,7 +538,10 @@ export default function UploadScreen() {
   const [isOccasionPickerVisible, setIsOccasionPickerVisible] = useState(false);
   const [isReviewing, setIsReviewing] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
+  const [reviewStatusIndex, setReviewStatusIndex] = useState(0);
   const heroFontFamily = Platform.select({ ios: 'Georgia', android: 'serif', default: undefined });
+  const reviewStatusOpacity = useRef(new Animated.Value(1)).current;
+  const latestReview = appContext?.latestOutfitReview ?? null;
   const selectedExtraOccasion = EXTRA_OCCASIONS.find((occasion) => occasion.id === selectedOccasion) ?? null;
   const primaryOccasions = OCCASIONS.slice(0, -1);
   const moreTileOccasion = selectedExtraOccasion ?? OCCASIONS[OCCASIONS.length - 1];
@@ -361,6 +559,37 @@ export default function UploadScreen() {
       opensPicker: true,
     },
   ];
+  const activeReviewStatus = REVIEW_STATUS_STEPS[reviewStatusIndex] ?? REVIEW_STATUS_STEPS[0];
+
+  useEffect(() => {
+    if (!isReviewing) {
+      setReviewStatusIndex(0);
+      reviewStatusOpacity.stopAnimation();
+      reviewStatusOpacity.setValue(1);
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      Animated.timing(reviewStatusOpacity, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }).start(() => {
+        setReviewStatusIndex((currentIndex) => (currentIndex + 1) % REVIEW_STATUS_STEPS.length);
+        Animated.timing(reviewStatusOpacity, {
+          toValue: 1,
+          duration: 190,
+          useNativeDriver: true,
+        }).start();
+      });
+    }, 1500);
+
+    return () => {
+      clearInterval(intervalId);
+      reviewStatusOpacity.stopAnimation();
+      reviewStatusOpacity.setValue(1);
+    };
+  }, [isReviewing, reviewStatusOpacity]);
 
   const closeUploadSheet = () => {
     setIsUploadSheetVisible(false);
@@ -395,7 +624,7 @@ export default function UploadScreen() {
     closeOccasionPicker();
   };
 
-  const handlePickerResult = (
+  const handlePickerResult = async (
     source: 'camera' | 'gallery',
     result: ImagePicker.ImagePickerResult
   ) => {
@@ -420,16 +649,19 @@ export default function UploadScreen() {
       return;
     }
 
-    logDev('selected URI', uri);
-    setSelectedImage({
-      uri,
-      base64: asset?.base64 ?? null,
-      mimeType: asset?.mimeType ?? null,
-      width: asset?.width,
-      height: asset?.height,
-      fileName: asset?.fileName ?? null,
-    });
-    setReviewError(null);
+    try {
+      const normalizedImage = await normalizePickedImageAsset(asset);
+
+      logDev('selected URI', normalizedImage.uri);
+      setSelectedImage(normalizedImage);
+      setReviewError(null);
+    } catch (error) {
+      logDev('image normalization failed', error);
+      Alert.alert(
+        'Couldn’t use that photo',
+        'Trendz could not prepare this image for review. Please try a different photo.'
+      );
+    }
   };
 
   const handleTakePhoto = async () => {
@@ -455,7 +687,7 @@ export default function UploadScreen() {
 
       logDev('launching camera');
       const result = await ImagePicker.launchCameraAsync(IMAGE_PICKER_OPTIONS);
-      handlePickerResult('camera', result);
+      await handlePickerResult('camera', result);
     } catch (error) {
       logDev('camera error caught', error);
       Alert.alert(
@@ -490,7 +722,7 @@ export default function UploadScreen() {
 
       logDev('launching gallery picker');
       const result = await ImagePicker.launchImageLibraryAsync(IMAGE_PICKER_OPTIONS);
-      handlePickerResult('gallery', result);
+      await handlePickerResult('gallery', result);
     } catch (error) {
       logDev('gallery error caught', error);
       Alert.alert(
@@ -525,12 +757,6 @@ export default function UploadScreen() {
       transportMode,
     });
 
-    if (transportMode === 'unconfigured') {
-      const message = getOutfitReviewConfigErrorMessage();
-      setReviewError(message);
-      return;
-    }
-
     if (!appContext) {
       setReviewError('Trendz could not prepare the review screen right now. Please try again.');
       return;
@@ -540,6 +766,58 @@ export default function UploadScreen() {
     setReviewError(null);
 
     try {
+      const reviewOwnerKey = buildOutfitReviewOwnerKey({
+        sessionUserId: appContext.session?.user?.id,
+        email: appContext.userProfile.email,
+        username: appContext.userProfile.username,
+      });
+      const imageFingerprint = await createOutfitImageFingerprint(selectedImage.base64 ?? '');
+      const reviewCacheKey = await buildOutfitReviewCacheKey({
+        ownerKey: reviewOwnerKey,
+        imageFingerprint,
+        occasion: occasionForReview,
+        eventDescription: customEvent || undefined,
+      });
+
+      logDev('review cache prepared', {
+        reviewOwnerKey,
+        imageFingerprint,
+        reviewCacheKey,
+        occasionForReview,
+      });
+
+      const cachedReview = appContext.findCachedOutfitReview(reviewCacheKey);
+
+      if (cachedReview) {
+        logDev('cached review hit', {
+          reviewId: cachedReview.id,
+          reviewCacheKey,
+          overallScore: cachedReview.result.overall_score,
+          postedToFeedAt: cachedReview.postedToFeedAt ?? null,
+        });
+
+        appContext.setLatestOutfitReview({
+          ...cachedReview,
+          imageUri: selectedImage.uri,
+          imageWidth: selectedImage.width,
+          imageHeight: selectedImage.height,
+          imageFingerprint,
+          reviewCacheKey,
+          occasion: occasionForReview,
+          eventDescription: customEvent || undefined,
+        });
+        router.push('/ai-results');
+        return;
+      }
+
+      logDev('cached review miss', { reviewCacheKey });
+
+      if (transportMode === 'unconfigured') {
+        const message = getOutfitReviewConfigErrorMessage();
+        setReviewError(message);
+        return;
+      }
+
       logDev('payload prepared', {
         imageUri: selectedImage.uri,
         occasion: occasionForReview,
@@ -567,10 +845,12 @@ export default function UploadScreen() {
       });
 
       const reviewSession = {
-        id: `review-${Date.now()}`,
+        id: reviewCacheKey,
         imageUri: selectedImage.uri,
         imageWidth: selectedImage.width,
         imageHeight: selectedImage.height,
+        imageFingerprint,
+        reviewCacheKey,
         occasion: occasionForReview,
         eventDescription: customEvent || undefined,
         analyzedAt: new Date().toISOString(),
@@ -650,6 +930,76 @@ export default function UploadScreen() {
             Get instant AI feedback on your outfit.
           </Text>
         </View>
+
+        {latestReview ? (
+          <View
+            style={{
+              marginBottom: 28,
+              borderRadius: 26,
+              borderWidth: 1,
+              borderColor: colors.helperBorder,
+              backgroundColor: colors.helperBackground,
+              paddingHorizontal: 20,
+              paddingVertical: 18,
+            }}>
+            <Text
+              style={{
+                color: colors.eyebrow,
+                fontSize: 11,
+                fontWeight: '700',
+                letterSpacing: 2.4,
+                textTransform: 'uppercase',
+              }}>
+              Latest Analysis
+            </Text>
+            <Text
+              style={{
+                marginTop: 10,
+                color: colors.title,
+                fontSize: 18,
+                fontWeight: '700',
+                lineHeight: 24,
+              }}>
+              {latestReview.result.tagline}
+            </Text>
+            <Text
+              style={{
+                marginTop: 8,
+                color: colors.helperText,
+                fontSize: 14,
+                lineHeight: 22,
+              }}>
+              {latestReview.occasion} • {formatScore(latestReview.result.overall_score)} •{' '}
+              {formatLatestReviewTime(latestReview.analyzedAt)}
+            </Text>
+            <Text
+              style={{
+                marginTop: 10,
+                color: colors.body,
+                fontSize: 14,
+                lineHeight: 22,
+              }}>
+              Your last analysis is still saved. Reopen it anytime or start a fresh review below.
+            </Text>
+
+            <TouchableOpacity
+              onPress={() => router.push('/ai-results')}
+              style={{
+                marginTop: 16,
+                alignSelf: 'flex-start',
+                borderRadius: 18,
+                borderWidth: 1,
+                borderColor: colors.buttonBorder,
+                backgroundColor: colors.buttonBackground,
+                paddingHorizontal: 18,
+                paddingVertical: 12,
+              }}>
+              <Text style={{ color: colors.buttonText, fontSize: 15, fontWeight: '700' }}>
+                View Latest Analysis
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         <View
           style={{
@@ -960,10 +1310,27 @@ export default function UploadScreen() {
               paddingHorizontal: 16,
               paddingVertical: 12,
             }}>
-            <Text style={{ color: colors.helperText, fontSize: 14, lineHeight: 21 }}>
-              Building your full AI analysis now. You&apos;ll be taken to the results page in a
-              moment.
-            </Text>
+            <Animated.View style={{ opacity: reviewStatusOpacity }}>
+              <Text
+                style={{
+                  color: colors.eyebrow,
+                  fontSize: 11,
+                  fontWeight: '700',
+                  letterSpacing: 1.8,
+                  textTransform: 'uppercase',
+                }}>
+                {activeReviewStatus.agent}
+              </Text>
+              <Text
+                style={{
+                  marginTop: 8,
+                  color: colors.helperText,
+                  fontSize: 14,
+                  lineHeight: 21,
+                }}>
+                {activeReviewStatus.message}
+              </Text>
+            </Animated.View>
           </View>
         ) : null}
 

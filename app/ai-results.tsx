@@ -1,11 +1,13 @@
-import { type ReactNode, useContext, useState } from 'react';
+import { type ReactNode, useContext, useMemo, useState } from 'react';
 import {
   Image,
+  Modal,
   Platform,
   SafeAreaView,
   ScrollView,
   StatusBar,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -139,6 +141,46 @@ function formatReviewedAt(value: string) {
   });
 }
 
+function toDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
+function formatEventPickerDate(dateKey: string) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function buildSuggestedEventTitle(occasion: string, eventDescription?: string) {
+  const trimmedDescription = eventDescription?.trim();
+
+  if (trimmedDescription) {
+    return trimmedDescription.length > 38 ? `${occasion} Look` : trimmedDescription;
+  }
+
+  switch (occasion.toLowerCase()) {
+    case 'date':
+      return 'Date Night Look';
+    case 'dinner':
+      return 'Dinner Look';
+    case 'wedding':
+      return 'Wedding Outfit';
+    case 'party':
+      return 'Party Look';
+    case 'office':
+      return 'Office Outfit';
+    default:
+      return `${occasion} Look`;
+  }
+}
+
 function severityColors(colors: ResultsThemeColors, severity: OutfitReviewFixItem['severity']) {
   switch (severity) {
     case 'High':
@@ -162,6 +204,19 @@ function severityColors(colors: ResultsThemeColors, severity: OutfitReviewFixIte
   }
 }
 
+function debugExplorePublishLog(message: string, payload?: unknown) {
+  if (!__DEV__) {
+    return;
+  }
+
+  if (payload === undefined) {
+    console.log(`[ai-results] ${message}`);
+    return;
+  }
+
+  console.log(`[ai-results] ${message}`, payload);
+}
+
 export default function AIResults() {
   const appContext = useContext(AppContext);
   const colorScheme = useColorScheme();
@@ -170,6 +225,33 @@ export default function AIResults() {
   const reviewSession = appContext?.latestOutfitReview ?? null;
   const [hasDismissedPostPrompt, setHasDismissedPostPrompt] = useState(false);
   const [postConfirmation, setPostConfirmation] = useState<string | null>(null);
+  const [isPublishingToExplore, setIsPublishingToExplore] = useState(false);
+  const [isEventModalOpen, setIsEventModalOpen] = useState(false);
+  const [eventTitle, setEventTitle] = useState('');
+  const [eventNotes, setEventNotes] = useState('');
+  const [selectedEventDateKey, setSelectedEventDateKey] = useState<string | null>(null);
+  const [eventFormError, setEventFormError] = useState<string | null>(null);
+  const [eventConfirmation, setEventConfirmation] = useState<string | null>(null);
+  const eventDateOptions = useMemo(
+    () =>
+      Array.from({ length: 14 }, (_, index) => {
+        const nextDate = new Date();
+        nextDate.setHours(12, 0, 0, 0);
+        nextDate.setDate(nextDate.getDate() + index);
+        const dateKey = toDateKey(nextDate);
+
+        return {
+          dateKey,
+          label: formatEventPickerDate(dateKey),
+        };
+      }),
+    []
+  );
+
+  const handleStartFresh = () => {
+    appContext?.setLatestOutfitReview(null);
+    router.replace('/(tabs)/upload');
+  };
 
   if (!reviewSession) {
     return (
@@ -182,7 +264,7 @@ export default function AIResults() {
         <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: 16, paddingBottom: 32 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <TouchableOpacity
-              onPress={() => router.replace('/(tabs)/upload')}
+              onPress={handleStartFresh}
               style={{
                 height: 40,
                 width: 40,
@@ -273,28 +355,137 @@ export default function AIResults() {
   const hasAlreadyBeenPosted =
     Boolean(reviewSession.postedToFeedAt) ||
     (reviewSession.id ? appContext?.hasUserExplorePost(reviewSession.id) ?? false : false);
+  const isExploreAdded = hasAlreadyBeenPosted || postConfirmation === 'Your look is now live in Explore' || postConfirmation === 'Already in Trendz Explore';
+  const derivedFeedCategories = feedPromptDecision.categories.length
+    ? feedPromptDecision.categories
+    : explorePostPreview?.categories ?? [];
   const shouldShowFeedPrompt =
     result.overall_score > 8 &&
     Boolean(explorePostPreview) &&
-    !hasAlreadyBeenPosted &&
     !hasDismissedPostPrompt;
+  const hasAlreadyBeenAddedToEvents =
+    Boolean(reviewSession.id) &&
+    (appContext?.plannerEvents.some((event) => event.reviewSessionId === reviewSession.id) ?? false);
+  const isEventAdded =
+    hasAlreadyBeenAddedToEvents || eventConfirmation === 'Added to your Events calendar';
 
-  const handlePostToFeed = () => {
-    if (!appContext || !explorePostPreview) {
+  const openEventModal = () => {
+    if (isEventAdded) {
       return;
     }
 
-    const wasAdded = appContext.addUserExplorePost(explorePostPreview);
-    const postedAt = reviewSession.postedToFeedAt ?? new Date().toISOString();
-    const postedFeedCategory = explorePostPreview.categories[0] ?? null;
+    setEventTitle(buildSuggestedEventTitle(reviewSession.occasion, reviewSession.eventDescription));
+    setEventNotes(reviewSession.eventDescription ?? '');
+    setSelectedEventDateKey(null);
+    setEventFormError(null);
+    setIsEventModalOpen(true);
+  };
 
-    appContext.setLatestOutfitReview({
-      ...reviewSession,
-      postedToFeedAt: postedAt,
-      postedFeedCategory,
+  const closeEventModal = () => {
+    setIsEventModalOpen(false);
+    setEventFormError(null);
+  };
+
+  const handleSaveToEvent = () => {
+    if (!appContext || isEventAdded) {
+      return;
+    }
+
+    if (!selectedEventDateKey) {
+      setEventFormError('Choose a date to add this look to your calendar.');
+      return;
+    }
+
+    const trimmedTitle =
+      eventTitle.trim() || buildSuggestedEventTitle(reviewSession.occasion, reviewSession.eventDescription);
+
+    appContext.addPlannerEvent({
+      dateKey: selectedEventDateKey,
+      title: trimmedTitle,
+      notes: eventNotes.trim(),
+      outfitSource: 'review',
+      outfitId: reviewSession.id,
+      outfitImageUrl: reviewSession.imageUri,
+      outfitTitle: result.tagline.trim() || trimmedTitle,
+      reviewSessionId: reviewSession.id,
     });
 
-    setPostConfirmation(wasAdded ? 'Added to Trendz Explore' : 'Already in Trendz Explore');
+    setEventConfirmation('Added to your Events calendar');
+    closeEventModal();
+  };
+
+  const handlePostToFeed = async () => {
+    if (!appContext || !explorePostPreview || isPublishingToExplore || isExploreAdded) {
+      debugExplorePublishLog('publish skipped from results page', {
+        hasAppContext: Boolean(appContext),
+        hasExplorePostPreview: Boolean(explorePostPreview),
+        isPublishingToExplore,
+        isExploreAdded,
+      });
+      return;
+    }
+
+    debugExplorePublishLog('add to explore tapped', {
+      reviewSessionId: reviewSession.id,
+      postId: explorePostPreview.id,
+      sessionUserId: appContext.session?.user?.id ?? null,
+      sessionUserEmail: appContext.session?.user?.email?.trim().toLowerCase() ?? null,
+    });
+    debugExplorePublishLog('publish payload built', {
+      postId: explorePostPreview.id,
+      title: explorePostPreview.title,
+      categories: explorePostPreview.categories,
+      score: explorePostPreview.scoreSnapshot.overall_score,
+      imageUrl: explorePostPreview.imageUrl,
+      ownerUserId: explorePostPreview.ownerUserId ?? null,
+    });
+
+    setIsPublishingToExplore(true);
+
+    try {
+      debugExplorePublishLog('publish started', {
+        postId: explorePostPreview.id,
+      });
+      const publishResult = await appContext.addUserExplorePost(explorePostPreview);
+
+      if (publishResult === 'error') {
+        debugExplorePublishLog('publish failed', {
+          postId: explorePostPreview.id,
+        });
+        setPostConfirmation('Couldn’t publish to Trendz Explore right now');
+        return;
+      }
+
+      const postedAt = reviewSession.postedToFeedAt ?? new Date().toISOString();
+      const postedFeedCategory =
+        explorePostPreview.categories[0] ?? feedPromptDecision.category ?? null;
+
+      appContext.setLatestOutfitReview({
+        ...reviewSession,
+        postedToFeedAt: postedAt,
+        postedFeedCategory,
+      });
+
+      await appContext.refreshExplorePosts();
+      debugExplorePublishLog('publish succeeded', {
+        postId: explorePostPreview.id,
+        publishResult,
+        postedFeedCategory,
+      });
+
+      setPostConfirmation(
+        publishResult === 'already_published'
+          ? 'Already in Trendz Explore'
+          : 'Your look is now live in Explore'
+      );
+    } catch (error) {
+      debugExplorePublishLog('publish threw unexpected error', error);
+      setIsPublishingToExplore(false);
+      setPostConfirmation('Couldn’t publish to Trendz Explore right now');
+      return;
+    } finally {
+      setIsPublishingToExplore(false);
+    }
   };
 
   return (
@@ -317,7 +508,7 @@ export default function AIResults() {
           borderBottomColor: colors.headerBorder,
         }}>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={handleStartFresh}
           style={{
             height: 40,
             width: 40,
@@ -338,7 +529,7 @@ export default function AIResults() {
         </Text>
 
         <TouchableOpacity
-          onPress={() => router.replace('/(tabs)/upload')}
+          onPress={handleStartFresh}
           style={{
             borderRadius: 999,
             borderWidth: 1,
@@ -552,7 +743,7 @@ export default function AIResults() {
                 'It clears the score, image quality, and category checks for the curated feed.'}
             </Text>
 
-            {feedPromptDecision.category ? (
+            {derivedFeedCategories.length ? (
               <View
                 style={{
                   alignSelf: 'flex-start',
@@ -572,44 +763,57 @@ export default function AIResults() {
                     letterSpacing: 1.5,
                     textTransform: 'uppercase',
                   }}>
-                  Best fit: {feedPromptDecision.category}
+                  Categories: {derivedFeedCategories.join(' • ')}
                 </Text>
               </View>
             ) : null}
 
             <View style={{ marginTop: 24, flexDirection: 'row', gap: 12 }}>
               <TouchableOpacity
-                onPress={handlePostToFeed}
+                onPress={() => void handlePostToFeed()}
+                disabled={isExploreAdded || isPublishingToExplore}
                 style={{
                   flex: 1,
                   alignItems: 'center',
                   borderRadius: 20,
                   borderWidth: 1,
-                  borderColor: colors.buttonBorder,
-                  backgroundColor: colors.buttonBackground,
+                  borderColor: isExploreAdded ? colors.inviteMutedBorder : colors.buttonBorder,
+                  backgroundColor: isExploreAdded ? colors.inviteMutedBackground : colors.buttonBackground,
                   paddingVertical: 16,
+                  opacity: isPublishingToExplore ? 0.82 : 1,
                 }}>
-                <Text style={{ color: colors.buttonText, fontSize: 16, fontWeight: '700' }}>
-                  Add to Explore Feed
+                <Text
+                  style={{
+                    color: isExploreAdded ? colors.inviteTitle : colors.buttonText,
+                    fontSize: 16,
+                    fontWeight: '700',
+                  }}>
+                  {isPublishingToExplore
+                    ? 'Adding to Explore...'
+                    : isExploreAdded
+                      ? 'Added to Explore'
+                      : 'Add to Explore Feed'}
                 </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                onPress={() => setHasDismissedPostPrompt(true)}
-                style={{
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderRadius: 20,
-                  borderWidth: 1,
-                  borderColor: colors.inviteMutedBorder,
-                  backgroundColor: colors.inviteMutedBackground,
-                  paddingHorizontal: 20,
-                  paddingVertical: 16,
-                }}>
-                <Text style={{ color: colors.inviteTitle, fontSize: 15, fontWeight: '700' }}>
-                  Not Now
-                </Text>
-              </TouchableOpacity>
+              {!isExploreAdded ? (
+                <TouchableOpacity
+                  onPress={() => setHasDismissedPostPrompt(true)}
+                  style={{
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: 20,
+                    borderWidth: 1,
+                    borderColor: colors.inviteMutedBorder,
+                    backgroundColor: colors.inviteMutedBackground,
+                    paddingHorizontal: 20,
+                    paddingVertical: 16,
+                  }}>
+                  <Text style={{ color: colors.inviteTitle, fontSize: 15, fontWeight: '700' }}>
+                    Not Now
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           </View>
         ) : null}
@@ -661,6 +865,104 @@ export default function AIResults() {
 
         <View
           style={{
+            marginTop: 24,
+            borderRadius: 24,
+            borderWidth: 1,
+            borderColor: colors.contentCardBorder,
+            backgroundColor: colors.contentCardBackground,
+            paddingHorizontal: 20,
+            paddingVertical: 18,
+          }}>
+          <Text
+            style={{
+              color: colors.eyebrow,
+              fontSize: 11,
+              fontWeight: '700',
+              letterSpacing: 2.4,
+              textTransform: 'uppercase',
+            }}>
+            Events Calendar
+          </Text>
+          <Text
+            style={{
+              marginTop: 10,
+              color: colors.titleText,
+              fontSize: 18,
+              fontWeight: '700',
+              lineHeight: 24,
+            }}>
+            Save this analyzed look to an upcoming event.
+          </Text>
+          <Text
+            style={{
+              marginTop: 8,
+              color: colors.bodyText,
+              fontSize: 14,
+              lineHeight: 24,
+            }}>
+            Attach the exact outfit review to a date in your planner so it shows up in Events later.
+          </Text>
+
+          <TouchableOpacity
+            onPress={openEventModal}
+            disabled={isEventAdded}
+            style={{
+              marginTop: 18,
+              alignItems: 'center',
+              borderRadius: 18,
+              borderWidth: 1,
+              borderColor: isEventAdded ? colors.inviteMutedBorder : colors.buttonBorder,
+              backgroundColor: isEventAdded ? colors.inviteMutedBackground : colors.buttonBackground,
+              paddingVertical: 15,
+              opacity: isEventAdded ? 0.82 : 1,
+            }}>
+            <Text
+              style={{
+                color: isEventAdded ? colors.inviteTitle : colors.buttonText,
+                fontSize: 16,
+                fontWeight: '700',
+              }}>
+              {isEventAdded ? 'Added to Events' : 'Add to Event'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {isEventAdded ? (
+          <View
+            style={{
+              marginTop: 16,
+              borderRadius: 22,
+              borderWidth: 1,
+              borderColor: colors.confirmationBorder,
+              backgroundColor: colors.confirmationBackground,
+              paddingHorizontal: 18,
+              paddingVertical: 16,
+            }}>
+            <Text
+              style={{
+                color: colors.confirmationEyebrow,
+                fontSize: 11,
+                fontWeight: '700',
+                letterSpacing: 2.4,
+                textTransform: 'uppercase',
+              }}>
+              Saved To Events
+            </Text>
+            <Text
+              style={{
+                marginTop: 10,
+                color: colors.confirmationTitle,
+                fontSize: 17,
+                fontWeight: '700',
+                lineHeight: 24,
+              }}>
+              {eventConfirmation || 'Added to your Events calendar'}
+            </Text>
+          </View>
+        ) : null}
+
+        <View
+          style={{
             marginTop: 32,
             flexDirection: 'row',
             flexWrap: 'wrap',
@@ -705,7 +1007,7 @@ export default function AIResults() {
         ) : null}
 
         <TouchableOpacity
-          onPress={() => router.replace('/(tabs)/upload')}
+          onPress={handleStartFresh}
           style={{
             marginTop: 40,
             alignItems: 'center',
@@ -720,6 +1022,239 @@ export default function AIResults() {
           </Text>
         </TouchableOpacity>
       </ScrollView>
+
+      <Modal
+        transparent
+        animationType="fade"
+        visible={isEventModalOpen}
+        onRequestClose={closeEventModal}>
+        <View
+          style={{
+            flex: 1,
+            justifyContent: 'center',
+            backgroundColor: 'rgba(5, 5, 5, 0.68)',
+            paddingHorizontal: 20,
+          }}>
+          <View
+            style={{
+              borderRadius: 30,
+              borderWidth: 1,
+              borderColor: colors.contentCardBorder,
+              backgroundColor: colors.contentCardBackground,
+              paddingHorizontal: 20,
+              paddingVertical: 22,
+            }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text
+                  style={{
+                    color: colors.eyebrow,
+                    fontSize: 11,
+                    fontWeight: '700',
+                    letterSpacing: 2.4,
+                    textTransform: 'uppercase',
+                  }}>
+                  Add To Event
+                </Text>
+                <Text
+                  style={{
+                    marginTop: 8,
+                    color: colors.titleText,
+                    fontSize: 22,
+                    fontWeight: '700',
+                    lineHeight: 28,
+                  }}>
+                  Attach this analyzed outfit to your planner
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={closeEventModal}
+                style={{
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: colors.pillBorder,
+                  backgroundColor: colors.pillBackground,
+                  paddingHorizontal: 14,
+                  paddingVertical: 8,
+                }}>
+                <Text style={{ color: colors.pillText, fontSize: 13, fontWeight: '700' }}>
+                  Close
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View
+              style={{
+                marginTop: 18,
+                flexDirection: 'row',
+                alignItems: 'center',
+                borderRadius: 22,
+                borderWidth: 1,
+                borderColor: colors.contentCardBorder,
+                backgroundColor: colors.pageBackground,
+                padding: 12,
+              }}>
+              <Image
+                source={{ uri: reviewSession.imageUri }}
+                style={{ height: 84, width: 68, borderRadius: 18, resizeMode: 'cover' }}
+              />
+              <View style={{ flex: 1, paddingLeft: 14 }}>
+                <Text
+                  style={{
+                    color: colors.titleText,
+                    fontSize: 16,
+                    fontWeight: '700',
+                    lineHeight: 22,
+                  }}
+                  numberOfLines={2}>
+                  {result.tagline}
+                </Text>
+                <Text
+                  style={{
+                    marginTop: 6,
+                    color: colors.supportText,
+                    fontSize: 13,
+                    lineHeight: 20,
+                  }}
+                  numberOfLines={2}>
+                  {reviewSession.occasion}
+                </Text>
+              </View>
+            </View>
+
+            <Text
+              style={{
+                marginTop: 18,
+                color: colors.titleText,
+                fontSize: 15,
+                fontWeight: '700',
+              }}>
+              Event Title
+            </Text>
+            <TextInput
+              value={eventTitle}
+              onChangeText={setEventTitle}
+              placeholder="Dinner Look"
+              placeholderTextColor={colors.supportText}
+              style={{
+                marginTop: 10,
+                borderRadius: 18,
+                borderWidth: 1,
+                borderColor: colors.contentCardBorder,
+                backgroundColor: colors.pageBackground,
+                color: colors.titleText,
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+                fontSize: 15,
+              }}
+            />
+
+            <Text
+              style={{
+                marginTop: 16,
+                color: colors.titleText,
+                fontSize: 15,
+                fontWeight: '700',
+              }}>
+              Notes
+            </Text>
+            <TextInput
+              value={eventNotes}
+              onChangeText={setEventNotes}
+              placeholder="Optional notes for this event"
+              placeholderTextColor={colors.supportText}
+              multiline
+              textAlignVertical="top"
+              style={{
+                marginTop: 10,
+                minHeight: 96,
+                borderRadius: 18,
+                borderWidth: 1,
+                borderColor: colors.contentCardBorder,
+                backgroundColor: colors.pageBackground,
+                color: colors.titleText,
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+                fontSize: 15,
+              }}
+            />
+
+            <Text
+              style={{
+                marginTop: 16,
+                color: colors.titleText,
+                fontSize: 15,
+                fontWeight: '700',
+              }}>
+              Pick a Date
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingTop: 12, paddingRight: 12 }}>
+              {eventDateOptions.map((option) => {
+                const isSelected = selectedEventDateKey === option.dateKey;
+
+                return (
+                  <TouchableOpacity
+                    key={option.dateKey}
+                    onPress={() => {
+                      setSelectedEventDateKey(option.dateKey);
+                      setEventFormError(null);
+                    }}
+                    style={{
+                      marginRight: 10,
+                      borderRadius: 18,
+                      borderWidth: 1,
+                      borderColor: isSelected ? colors.buttonBorder : colors.contentCardBorder,
+                      backgroundColor: isSelected ? colors.buttonBackground : colors.pageBackground,
+                      paddingHorizontal: 14,
+                      paddingVertical: 12,
+                    }}>
+                    <Text
+                      style={{
+                        color: isSelected ? colors.buttonText : colors.titleText,
+                        fontSize: 13,
+                        fontWeight: '700',
+                      }}>
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            {eventFormError ? (
+              <Text
+                style={{
+                  marginTop: 12,
+                  color: colors.severityHighText,
+                  fontSize: 13,
+                  lineHeight: 20,
+                }}>
+                {eventFormError}
+              </Text>
+            ) : null}
+
+            <TouchableOpacity
+              onPress={handleSaveToEvent}
+              style={{
+                marginTop: 20,
+                alignItems: 'center',
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: colors.buttonBorder,
+                backgroundColor: colors.buttonBackground,
+                paddingVertical: 16,
+              }}>
+              <Text style={{ color: colors.buttonText, fontSize: 16, fontWeight: '700' }}>
+                Save Event
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

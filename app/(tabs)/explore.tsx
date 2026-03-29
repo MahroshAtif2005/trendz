@@ -1,5 +1,15 @@
 import { useMemo, useState } from 'react';
-import { View, Text, ScrollView, SafeAreaView, Platform, StatusBar } from 'react-native';
+import {
+  Image,
+  Modal,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import CategoryChip from '@/components/CategoryChip';
 import InspirationCard from '@/components/InspirationCard';
 import { useApp } from '@/context/AppContext';
@@ -8,16 +18,18 @@ import {
   EXPLORE_CATEGORIES,
   EXPLORE_FEED_ITEMS,
   ExploreCategory,
+  ExploreInspirationItem,
   getExploreItemsByCategory,
   mergeExploreFeedItems,
 } from '@/lib/explore-feed';
 
 export default function Explore() {
   const [activeCategory, setActiveCategory] = useState<ExploreCategory>('All');
-  const { isSaved, toggleSave, userExplorePosts } = useApp();
+  const [previewItem, setPreviewItem] = useState<ExploreInspirationItem | null>(null);
+  const { activeTheme, isSaved, toggleSave, explorePosts } = useApp();
   const mergedFeedItems = useMemo(
-    () => mergeExploreFeedItems(userExplorePosts, EXPLORE_FEED_ITEMS),
-    [userExplorePosts]
+    () => mergeExploreFeedItems(explorePosts, EXPLORE_FEED_ITEMS),
+    [explorePosts]
   );
   const totalLooks = mergedFeedItems.length;
   const totalCuratedCategories = EXPLORE_CATEGORIES.length - 1;
@@ -31,6 +43,12 @@ export default function Explore() {
     () => buildBalancedColumns(filteredData),
     [filteredData]
   );
+  const isDark = activeTheme === 'dark';
+  const previewIsSaved = previewItem ? isSaved(previewItem.id) : false;
+
+  const closePreview = () => {
+    setPreviewItem(null);
+  };
 
   return (
     <SafeAreaView className="flex-1 bg-background" style={{ paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0 }}>
@@ -85,6 +103,7 @@ export default function Explore() {
                   item={item}
                   isSaved={isSaved(item.id)}
                   onToggleSave={() => toggleSave(item)}
+                  onPress={() => setPreviewItem(item)}
                   variant="feed"
                 />
               ))}
@@ -97,6 +116,7 @@ export default function Explore() {
                   item={item}
                   isSaved={isSaved(item.id)}
                   onToggleSave={() => toggleSave(item)}
+                  onPress={() => setPreviewItem(item)}
                   variant="feed"
                 />
               ))}
@@ -104,6 +124,132 @@ export default function Explore() {
           </View>
         </View>
       </ScrollView>
+
+      <Modal
+        transparent
+        animationType="fade"
+        visible={Boolean(previewItem)}
+        onRequestClose={closePreview}>
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={closePreview}
+          style={{
+            flex: 1,
+            justifyContent: 'center',
+            backgroundColor: 'rgba(5, 5, 5, 0.84)',
+            paddingHorizontal: 18,
+            paddingVertical: 28,
+          }}>
+          {previewItem ? (
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={() => {}}
+              style={{
+                borderRadius: 30,
+                borderWidth: 1,
+                borderColor: isDark ? '#3f2f22' : '#dbc8af',
+                backgroundColor: isDark ? '#120f0c' : '#f9f3ea',
+                padding: 14,
+                shadowColor: '#000',
+                shadowOpacity: isDark ? 0.3 : 0.14,
+                shadowOffset: { width: 0, height: 12 },
+                shadowRadius: 28,
+              }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <View style={{ flex: 1, paddingRight: 12 }}>
+                  <Text
+                    style={{
+                      color: isDark ? '#eadbc8' : '#34281c',
+                      fontSize: 20,
+                      fontWeight: '700',
+                    }}
+                    numberOfLines={2}>
+                    {previewItem.title}
+                  </Text>
+                  {previewItem.vibe ? (
+                    <Text
+                      style={{
+                        marginTop: 6,
+                        color: isDark ? '#d6c2a5' : '#725d47',
+                        fontSize: 13,
+                        letterSpacing: 1.2,
+                        textTransform: 'uppercase',
+                      }}
+                      numberOfLines={1}>
+                      {previewItem.vibe}
+                    </Text>
+                  ) : null}
+                </View>
+
+                <TouchableOpacity
+                  onPress={closePreview}
+                  style={{
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: isDark ? '#4a3826' : '#d6c3aa',
+                    backgroundColor: isDark ? '#19130f' : '#f5ede2',
+                    paddingHorizontal: 14,
+                    paddingVertical: 8,
+                  }}>
+                  <Text
+                    style={{
+                      color: isDark ? '#eadbc8' : '#3a2a1d',
+                      fontSize: 13,
+                      fontWeight: '700',
+                    }}>
+                    Close
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <Image
+                source={{ uri: previewItem.imageUrl }}
+                style={{
+                  width: '100%',
+                  aspectRatio: 0.74,
+                  borderRadius: 24,
+                  backgroundColor: isDark ? '#17120e' : '#efe6da',
+                }}
+                resizeMode="cover"
+              />
+
+              <View style={{ marginTop: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text
+                  style={{
+                    flex: 1,
+                    color: isDark ? '#cbb8a3' : '#6f5b46',
+                    fontSize: 14,
+                    lineHeight: 22,
+                  }}
+                  numberOfLines={2}>
+                  Tap outside or use close to return to Explore.
+                </Text>
+
+                <TouchableOpacity
+                  onPress={() => toggleSave(previewItem)}
+                  style={{
+                    marginLeft: 14,
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: previewIsSaved ? '#d4af6a' : isDark ? '#4a3826' : '#d6c3aa',
+                    backgroundColor: previewIsSaved ? '#d4af6a' : isDark ? '#19130f' : '#f5ede2',
+                    paddingHorizontal: 16,
+                    paddingVertical: 10,
+                  }}>
+                  <Text
+                    style={{
+                      color: previewIsSaved ? '#1a120a' : isDark ? '#eadbc8' : '#3a2a1d',
+                      fontSize: 13,
+                      fontWeight: '700',
+                    }}>
+                    {previewIsSaved ? 'Saved' : 'Save'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          ) : null}
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }

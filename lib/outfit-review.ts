@@ -69,6 +69,7 @@ const DEFAULT_TIMEOUT_MS = Number(process.env.EXPO_PUBLIC_AI_REVIEW_TIMEOUT_MS ?
 const DEFAULT_STYLE_REGION = process.env.EXPO_PUBLIC_STYLE_REGION?.trim() || 'Global';
 const OPENAI_CHAT_COMPLETIONS_URL = 'https://api.openai.com/v1/chat/completions';
 const OPENAI_DEV_FALLBACK_MODEL = 'gpt-4.1-mini';
+const OPENAI_DETERMINISTIC_TEMPERATURE = 0;
 
 const CATEGORY_HINTS_BY_OCCASION: Record<string, ExploreTag[]> = {
   Date: ['Date Night', 'Soft Feminine', 'Old Money / Quiet Luxury'],
@@ -302,6 +303,7 @@ async function postDirectOpenAiReviewRequest(body: ReviewRequestBody) {
       },
       body: JSON.stringify({
         model: OPENAI_DEV_FALLBACK_MODEL,
+        temperature: OPENAI_DETERMINISTIC_TEMPERATURE,
         response_format: { type: 'json_object' },
         messages: [
           {

@@ -13,18 +13,6 @@ import {
 } from 'react-native';
 import { useApp } from '@/context/AppContext';
 
-type PlannerEvent = {
-  id: string;
-  dateKey: string;
-  title: string;
-  notes: string;
-  outfitSource: 'saved' | 'none';
-  outfitId?: string;
-  outfitImageUrl?: string;
-  outfitTitle?: string;
-  createdAt: number;
-};
-
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
 function createMonthStart(date: Date) {
@@ -95,11 +83,16 @@ function buildCalendarDays(month: Date) {
 }
 
 export default function Events() {
-  const { activeTheme, savedItems } = useApp();
+  const {
+    activeTheme,
+    savedItems,
+    plannerEvents: events,
+    addPlannerEvent,
+    removePlannerEvent,
+  } = useApp();
   const today = useMemo(() => new Date(), []);
   const [visibleMonth, setVisibleMonth] = useState(() => createMonthStart(today));
   const [selectedDate, setSelectedDate] = useState(today);
-  const [events, setEvents] = useState<PlannerEvent[]>([]);
   const [isComposerOpen, setIsComposerOpen] = useState(false);
   const [draftTitle, setDraftTitle] = useState('');
   const [draftNotes, setDraftNotes] = useState('');
@@ -184,22 +177,38 @@ export default function Events() {
 
     const selectedOutfit = savedItems.find((item) => item.id === selectedOutfitId);
 
-    setEvents((currentEvents) => [
-      {
-        id: `${selectedDateKey}-${Date.now()}`,
-        dateKey: selectedDateKey,
-        title: draftTitle.trim(),
-        notes: draftNotes.trim(),
-        outfitSource: selectedOutfit ? 'saved' : 'none',
-        outfitId: selectedOutfit?.id,
-        outfitImageUrl: selectedOutfit?.imageUrl,
-        outfitTitle: selectedOutfit?.title,
-        createdAt: Date.now(),
-      },
-      ...currentEvents,
-    ]);
+    addPlannerEvent({
+      dateKey: selectedDateKey,
+      title: draftTitle.trim(),
+      notes: draftNotes.trim(),
+      outfitSource: selectedOutfit ? 'saved' : 'none',
+      outfitId: selectedOutfit?.id,
+      outfitImageUrl: selectedOutfit?.imageUrl,
+      outfitTitle: selectedOutfit?.title,
+    });
 
     closeComposer();
+  };
+
+  const handleDeleteEvent = (eventId: string) => {
+    Alert.alert(
+      'Delete this event?',
+      'This will remove it from your calendar.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            removePlannerEvent(eventId);
+            Alert.alert('Removed', 'This event was deleted from your calendar.');
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -373,6 +382,19 @@ export default function Events() {
                 className="mt-3 rounded-[28px] border border-border-strong bg-surface-elevated p-4 shadow-sm shadow-black/5 dark:bg-[#110e0b] dark:shadow-black/25"
                 style={cardStyle}
               >
+                <View className="mb-3 flex-row items-center justify-between">
+                  <Text className="text-[12px] font-sans uppercase tracking-[0.16em]" style={eyebrowTextStyle}>
+                    Calendar Entry
+                  </Text>
+                  <TouchableOpacity onPress={() => handleDeleteEvent(event.id)} activeOpacity={0.82}>
+                    <Text
+                      className="font-sans text-[13px] font-semibold"
+                      style={{ color: isDark ? '#d8ad8f' : '#9a5f41' }}
+                    >
+                      Delete
+                    </Text>
+                  </TouchableOpacity>
+                </View>
                 <View className="flex-row">
                   <View className="flex-1 pr-4">
                     <Text className="text-[19px] font-sans font-semibold tracking-tight" style={primaryTextStyle}>
@@ -567,6 +589,16 @@ export default function Events() {
                   ) : (
                     <View className="h-[56px] w-[56px] rounded-[16px] border border-dashed border-border-strong bg-surface" style={surfaceStyle} />
                   )}
+                </View>
+                <View className="mt-3 flex-row justify-end">
+                  <TouchableOpacity onPress={() => handleDeleteEvent(event.id)} activeOpacity={0.82}>
+                    <Text
+                      className="font-sans text-[13px] font-semibold"
+                      style={{ color: isDark ? '#d8ad8f' : '#9a5f41' }}
+                    >
+                      Delete
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             ))}
