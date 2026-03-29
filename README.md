@@ -1,50 +1,190 @@
-# Welcome to your Expo app 👋
+Trendz
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+AI-powered outfit analysis, event styling, and curated fashion discovery.
 
-## Get started
+Trendz is a mobile fashion app that helps users analyze their outfits, plan looks for upcoming events, and discover aesthetic inspiration through a curated Explore feed.
 
-1. Install dependencies
+The app combines AI outfit feedback with a premium, social-fashion style experience — helping users decide what works, what doesn’t, and what to wear next.
 
-   ```bash
-   npm install
-   ```
+--
 
-2. Start the app
+Current Features
 
-   ```bash
-   npx expo start
-   ```
+1) AI Outfit Analysis
 
-In the output, you'll find options to open the app in a
+Upload a photo of your outfit and get AI-based feedback including:
+	•	Occasion Fit
+	•	Trend Score
+	•	Confidence Score
+	•	written style feedback
+	•	categorized fashion aesthetic tags
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+Examples:
+	•	Date Night
+	•	Old Money / Quiet Luxury
+	•	Eid / Eastern Glam
+	•	Minimal / Clean Girl
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+--
 
-## Get a fresh project
+2) Event Planning
 
-When you're ready, run:
+Users can save analyzed looks directly into an Events calendar to plan future outfits.
 
-```bash
-npm run reset-project
-```
+Current flow:
+	•	analyze an outfit
+	•	tap Add to Event
+	•	choose a date / event title / notes
+	•	save the outfit to the Events page
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+--
 
-## Learn more
+3) Explore Feed
 
-To learn more about developing your project with Expo, look at the following resources:
+Trendz includes a curated Explore screen designed like a fashion moodboard.
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Users can:
+	•	browse style inspiration
+	•	filter by aesthetic / category
+	•	save looks
+	•	open images larger for better viewing
 
-## Join the community
+--
 
-Join our community of developers creating universal apps.
+4) Saved Looks
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Users can save inspiration and outfit ideas to revisit later.
+
+--
+
+5) Premium Mobile UI
+
+The app is being designed with a luxury, editorial, fashion-forward aesthetic, inspired by:
+	•	Pinterest
+	•	Instagram fashion discovery
+	•	premium fashion campaign styling
+
+--
+
+📱 Screens Included So Far
+	•	Explore feed
+	•	Upload / Analyze screen
+	•	AI Style Analysis result screen
+	•	Events planner
+	•	Saved looks
+	•	Profile screen
+
+Screenshots / demo GIFs can be added here later.
+
+--
+
+🛠️ Tech Stack
+
+Frontend
+	•	React Native
+	•	Expo
+	•	TypeScript
+	•	Expo Router
+
+Backend / Services
+	•	Supabase
+	•	authentication
+	•	database
+	•	storage
+	•	OpenAI / AI outfit analysis pipeline
+
+Other
+	•	local persistence for some user flows
+	•	modular UI components
+	•	mobile-first design system
+
+--
+
+ Product Vision
+
+Trendz is being built to become more than just an outfit rating app.
+
+The long-term vision is to create an AI fashion companion that helps users:
+	•	know if an outfit fits an occasion
+	•	improve a look with better styling suggestions
+	•	save and plan outfits for future events
+	•	discover aesthetic inspiration tailored to their vibe
+	•	eventually receive shopping / affiliate-based recommendations
+
+--
+
+Current Work In Progress
+
+The app is actively being built and improved.
+
+Current development areas:
+	•	improving AI consistency for repeated outfit uploads
+	•	fixing Explore publishing flow
+	•	improving event management
+	•	smoother image preview / gallery interactions
+	•	more polished social-fashion UX
+	•	cleaner saved / wardrobe system
+---
+
+ Planned Features
+
+Near-term
+	•	delete / edit events
+	•	better outfit history
+	•	stronger AI consistency for the same image
+	•	improved Explore publishing and sharing
+	•	richer saved looks system
+
+Future
+	•	AI styling recommendations
+	•	item-by-item outfit breakdown
+	•	suggested outfit upgrades
+	•	affiliate shopping links
+	•	personal wardrobe assistant
+	•	try-on / visual styling concepts
+	•	region-specific fashion discovery
+---
+
+📂 Project Status
+
+Trendz is currently in active MVP development.
+
+The product already includes the core user experience:
+	•	upload
+	•	analyze
+	•	save
+	•	plan
+	•	explore
+
+The current focus is improving:
+	•	stability
+	•	consistency
+	•	backend integration
+	•	overall polish
+   
+---
+
+⚙️ Local Setup
+
+Clone the repo and run locally:
+
+git clone https://github.com/MahroshAtif2005/trendz.git
+cd trendz
+npm install
+
+Start the Expo development server:
+
+npx expo start
+
+Run on iOS Simulator:
+
+npx expo run:ios
+
+Run on Android Emulator:
+
+npx expo run:android
+
+
+
+
+
