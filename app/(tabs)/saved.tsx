@@ -1,14 +1,13 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
-  FlatList,
   Image,
   Modal,
   Platform,
   SafeAreaView,
+  ScrollView,
   StatusBar,
   Text,
   TouchableOpacity,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import InspirationCard from '@/components/InspirationCard';
@@ -18,12 +17,18 @@ import { useApp } from '@/context/AppContext';
 export default function Saved() {
   const [previewItem, setPreviewItem] = useState<InspirationItem | null>(null);
   const { savedItems, isSaved, toggleSave, activeTheme } = useApp();
-  const { width } = useWindowDimensions();
   const isDark = activeTheme === 'dark';
   const previewIsSaved = previewItem ? isSaved(previewItem.id) : false;
   const GRID_GAP = 8;
   const GRID_SIDE_PADDING = 12;
-  const cardWidth = Math.floor((width - GRID_SIDE_PADDING * 2 - GRID_GAP) / 2);
+  const leftItems = useMemo(
+    () => savedItems.filter((_, index) => index % 2 === 0),
+    [savedItems]
+  );
+  const rightItems = useMemo(
+    () => savedItems.filter((_, index) => index % 2 !== 0),
+    [savedItems]
+  );
 
   const screenStyle = { backgroundColor: isDark ? '#050505' : '#fcfaf6' };
   const titleStyle = { color: isDark ? '#eadbc8' : '#34281c' };
@@ -58,20 +63,14 @@ export default function Saved() {
         </Text>
       </View>
 
-      <FlatList
-        data={savedItems}
-        keyExtractor={(item) => item.id}
-        numColumns={2}
+      <ScrollView
         contentContainerStyle={{
           paddingHorizontal: GRID_SIDE_PADDING,
           paddingTop: GRID_GAP,
           paddingBottom: 120,
-          flexGrow: 1,
         }}
-        columnWrapperStyle={{ gap: GRID_GAP }}
-        ItemSeparatorComponent={() => <View style={{ height: GRID_GAP }} />}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
+        showsVerticalScrollIndicator={false}>
+        {savedItems.length === 0 ? (
           <View
             className="mx-2 mt-20 flex-1 items-center justify-center rounded-[28px] border px-8 py-12 shadow-sm shadow-black/5 dark:shadow-black/25"
             style={emptyCardStyle}
@@ -83,20 +82,37 @@ export default function Saved() {
               Tap the heart icon on any inspiration look to save it here.
             </Text>
           </View>
-        }
-        renderItem={({ item }) => (
-          <View style={{ width: cardWidth }}>
-            <InspirationCard
-              item={item}
-              isSaved={isSaved(item.id)}
-              onToggleSave={() => void handleToggleSave(item)}
-              onPress={() => setPreviewItem(item)}
-              variant="feed"
-              disableOuterSpacing
-            />
+        ) : (
+          <View style={{ flexDirection: 'row', gap: GRID_GAP }}>
+            <View style={{ flex: 1, gap: GRID_GAP }}>
+              {leftItems.map((item) => (
+                <InspirationCard
+                  key={item.id}
+                  item={item}
+                  isSaved={isSaved(item.id)}
+                  onToggleSave={() => void handleToggleSave(item)}
+                  onPress={() => setPreviewItem(item)}
+                  variant="feed"
+                  disableOuterSpacing
+                />
+              ))}
+            </View>
+            <View style={{ flex: 1, gap: GRID_GAP, marginTop: 18 }}>
+              {rightItems.map((item) => (
+                <InspirationCard
+                  key={item.id}
+                  item={item}
+                  isSaved={isSaved(item.id)}
+                  onToggleSave={() => void handleToggleSave(item)}
+                  onPress={() => setPreviewItem(item)}
+                  variant="feed"
+                  disableOuterSpacing
+                />
+              ))}
+            </View>
           </View>
         )}
-      />
+      </ScrollView>
 
       <Modal
         transparent
