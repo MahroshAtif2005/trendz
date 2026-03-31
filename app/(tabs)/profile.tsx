@@ -151,16 +151,16 @@ export default function Profile() {
             </Text>
           ) : null}
 
-          <Link href="/edit-profile" asChild>
-            <TouchableOpacity
-              className="mt-6 rounded-full border border-border-strong px-7 py-3.5 shadow-sm shadow-black/5 dark:shadow-black/25"
-              style={elevatedSurfaceStyle}
-            >
-              <Text className="font-sans text-[14px] font-semibold tracking-[0.08em]" style={primaryTextStyle}>
-                Edit Profile
-              </Text>
-            </TouchableOpacity>
-          </Link>
+          <TouchableOpacity
+            className="mt-6 rounded-full border border-border-strong px-7 py-3.5 shadow-sm shadow-black/5 dark:shadow-black/25"
+            style={elevatedSurfaceStyle}
+            activeOpacity={0.88}
+            onPress={() => router.push('/edit-profile')}
+          >
+            <Text className="font-sans text-[14px] font-semibold tracking-[0.08em]" style={primaryTextStyle}>
+              Edit Profile
+            </Text>
+          </TouchableOpacity>
         </View>
 
         <View className="mt-6 flex-row justify-between gap-x-3">
@@ -460,12 +460,12 @@ function MenuItem({
 }
 
 function getWardrobeSaveCount(post: UserExplorePost) {
-  if (Array.isArray(post.savedByUserIds)) {
-    return post.savedByUserIds.length;
-  }
-
   if (typeof post.saveCount === 'number' && Number.isFinite(post.saveCount)) {
     return Math.max(0, post.saveCount);
+  }
+
+  if (Array.isArray(post.savedByUserIds)) {
+    return post.savedByUserIds.length;
   }
 
   return 0;

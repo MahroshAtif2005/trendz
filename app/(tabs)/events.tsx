@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useApp } from '@/context/AppContext';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
@@ -80,6 +81,37 @@ function buildCalendarDays(month: Date) {
 
     return new Date(year, monthIndex, dayNumber);
   });
+}
+
+function DeleteEventButton({
+  isDark,
+  onPress,
+}: {
+  isDark: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.82}
+      style={{
+        height: 28,
+        width: 28,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 10,
+        borderWidth: 0.8,
+        borderColor: isDark ? 'rgba(216, 187, 132, 0.16)' : 'rgba(185, 140, 73, 0.16)',
+        backgroundColor: isDark ? 'rgba(216, 187, 132, 0.05)' : 'rgba(185, 140, 73, 0.06)',
+      }}
+    >
+      <MaterialIcons
+        name="delete-outline"
+        size={16}
+        color={isDark ? '#cfa889' : '#9a6547'}
+      />
+    </TouchableOpacity>
+  );
 }
 
 export default function Events() {
@@ -382,21 +414,11 @@ export default function Events() {
                 className="mt-3 rounded-[28px] border border-border-strong bg-surface-elevated p-4 shadow-sm shadow-black/5 dark:bg-[#110e0b] dark:shadow-black/25"
                 style={cardStyle}
               >
-                <View className="mb-3 flex-row items-center justify-between">
-                  <Text className="text-[12px] font-sans uppercase tracking-[0.16em]" style={eyebrowTextStyle}>
-                    Calendar Entry
-                  </Text>
-                  <TouchableOpacity onPress={() => handleDeleteEvent(event.id)} activeOpacity={0.82}>
-                    <Text
-                      className="font-sans text-[13px] font-semibold"
-                      style={{ color: isDark ? '#d8ad8f' : '#9a5f41' }}
-                    >
-                      Delete
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                <View className="flex-row">
+                <View className="flex-row items-start justify-between">
                   <View className="flex-1 pr-4">
+                    <Text className="text-[12px] font-sans uppercase tracking-[0.16em]" style={eyebrowTextStyle}>
+                      Calendar Entry
+                    </Text>
                     <Text className="text-[19px] font-sans font-semibold tracking-tight" style={primaryTextStyle}>
                       {event.title}
                     </Text>
@@ -413,22 +435,29 @@ export default function Events() {
                     </Text>
                   </View>
 
-                  {event.outfitImageUrl ? (
-                    <Image
-                      source={{ uri: event.outfitImageUrl }}
-                      className="h-[94px] w-[74px] rounded-[20px]"
-                      resizeMode="cover"
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <DeleteEventButton
+                      isDark={isDark}
+                      onPress={() => handleDeleteEvent(event.id)}
                     />
-                  ) : (
-                    <View
-                      className="h-[94px] w-[74px] items-center justify-center rounded-[20px] border border-dashed border-border-strong bg-surface"
-                      style={surfaceStyle}
-                    >
-                      <Text className="px-2 text-center text-[11px] font-sans font-medium uppercase tracking-[0.14em]" style={weekdayLabelStyle}>
-                        Open Look
-                      </Text>
-                    </View>
-                  )}
+
+                    {event.outfitImageUrl ? (
+                      <Image
+                        source={{ uri: event.outfitImageUrl }}
+                        className="mt-3 h-[94px] w-[74px] rounded-[20px]"
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View
+                        className="mt-3 h-[94px] w-[74px] items-center justify-center rounded-[20px] border border-dashed border-border-strong bg-surface"
+                        style={surfaceStyle}
+                      >
+                        <Text className="px-2 text-center text-[11px] font-sans font-medium uppercase tracking-[0.14em]" style={weekdayLabelStyle}>
+                          Open Look
+                        </Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
               </View>
             ))}
@@ -570,7 +599,7 @@ export default function Events() {
                 className="mt-3 rounded-[26px] border border-border-strong bg-surface-elevated px-4 py-4 shadow-sm shadow-black/5 dark:bg-[#110e0b] dark:shadow-black/25"
                 style={cardStyle}
               >
-                <View className="flex-row items-center justify-between">
+                <View className="flex-row items-start justify-between">
                   <View className="flex-1 pr-4">
                     <Text className="text-[17px] font-sans font-semibold tracking-tight" style={primaryTextStyle}>
                       {event.title}
@@ -580,25 +609,22 @@ export default function Events() {
                     </Text>
                   </View>
 
-                  {event.outfitImageUrl ? (
-                    <Image
-                      source={{ uri: event.outfitImageUrl }}
-                      className="h-[56px] w-[56px] rounded-[16px]"
-                      resizeMode="cover"
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <DeleteEventButton
+                      isDark={isDark}
+                      onPress={() => handleDeleteEvent(event.id)}
                     />
-                  ) : (
-                    <View className="h-[56px] w-[56px] rounded-[16px] border border-dashed border-border-strong bg-surface" style={surfaceStyle} />
-                  )}
-                </View>
-                <View className="mt-3 flex-row justify-end">
-                  <TouchableOpacity onPress={() => handleDeleteEvent(event.id)} activeOpacity={0.82}>
-                    <Text
-                      className="font-sans text-[13px] font-semibold"
-                      style={{ color: isDark ? '#d8ad8f' : '#9a5f41' }}
-                    >
-                      Delete
-                    </Text>
-                  </TouchableOpacity>
+
+                    {event.outfitImageUrl ? (
+                      <Image
+                        source={{ uri: event.outfitImageUrl }}
+                        className="mt-3 h-[56px] w-[56px] rounded-[16px]"
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View className="mt-3 h-[56px] w-[56px] rounded-[16px] border border-dashed border-border-strong bg-surface" style={surfaceStyle} />
+                    )}
+                  </View>
                 </View>
               </View>
             ))}

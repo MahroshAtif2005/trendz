@@ -57,7 +57,7 @@ export default function Settings() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 60, paddingTop: 10 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 120, paddingTop: 10 }} showsVerticalScrollIndicator={false} bounces={true}>
         
         <SettingsGroup title="Account" titleStyle={eyebrowTextStyle} cardStyle={groupCardStyle}>
           <SettingsRow icon="person.fill" label="Edit Profile" onPress={() => router.push('/edit-profile')} primaryTextStyle={primaryTextStyle} secondaryTextStyle={secondaryTextStyle} mutedTextStyle={mutedTextStyle} iconBadgeStyle={iconBadgeStyle} chevronColor={isDark ? '#cbb89c' : '#9a856e'} iconColor={isDark ? '#d8bb84' : '#b98c49'} />

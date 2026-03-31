@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Image,
   Modal,
   Platform,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -10,6 +10,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
+import { useFocusEffect } from '@react-navigation/native';
 import CategoryChip from '@/components/CategoryChip';
 import InspirationCard from '@/components/InspirationCard';
 import { useApp } from '@/context/AppContext';
@@ -22,21 +24,89 @@ import {
   getExploreItemsByCategory,
   mergeExploreFeedItems,
 } from '@/lib/explore-feed';
+import {
+  getInteractionWeights,
+  rankPosts,
+  recordInteraction,
+} from '@/lib/explorePersonalisation';
+
+function normalizeFeedImageUrl(url: string) {
+  return url
+    .trim()
+    .toLowerCase()
+    .split('#')[0]
+    .split('?')[0]
+    .replace(/\/+$/, '');
+}
+
+function dedupeFeedItemsForRender(items: ExploreInspirationItem[]) {
+  const seenIds = new Set<string>();
+  const seenImages = new Set<string>();
+
+  return items.filter((item) => {
+    const normalizedImageUrl = normalizeFeedImageUrl(item.imageUrl);
+
+    if (!item.id || seenIds.has(item.id)) {
+      return false;
+    }
+
+    if (normalizedImageUrl && seenImages.has(normalizedImageUrl)) {
+      return false;
+    }
+
+    seenIds.add(item.id);
+
+    if (normalizedImageUrl) {
+      seenImages.add(normalizedImageUrl);
+    }
+
+    return true;
+  });
+}
 
 export default function Explore() {
   const [activeCategory, setActiveCategory] = useState<ExploreCategory>('All');
   const [previewItem, setPreviewItem] = useState<ExploreInspirationItem | null>(null);
-  const { activeTheme, isSaved, toggleSave, explorePosts } = useApp();
-  const mergedFeedItems = useMemo(
-    () => mergeExploreFeedItems(explorePosts, EXPLORE_FEED_ITEMS),
-    [explorePosts]
+  const [interactionWeights, setInteractionWeights] = useState<Record<string, number>>({});
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [feedPosts, setFeedPosts] = useState<ExploreInspirationItem[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const { activeTheme, isSaved, toggleSave, explorePosts, refreshExplorePosts } = useApp();
+
+  const reloadInteractionWeights = useCallback(async () => {
+    const weights = await getInteractionWeights();
+    setInteractionWeights(weights);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshExplorePosts();
+      void reloadInteractionWeights();
+    }, [refreshExplorePosts, reloadInteractionWeights])
   );
-  const totalLooks = mergedFeedItems.length;
+
+  const buildRankedFeed = useCallback(
+    (posts: ExploreInspirationItem[], weights: Record<string, number>) =>
+      dedupeFeedItemsForRender(rankPosts(mergeExploreFeedItems(posts, EXPLORE_FEED_ITEMS), weights)),
+    []
+  );
+
+  const mergedFeedItems = useMemo(
+    () =>
+      buildRankedFeed(explorePosts, interactionWeights),
+    [buildRankedFeed, explorePosts, interactionWeights, refreshKey]
+  );
+
+  useEffect(() => {
+    setFeedPosts(mergedFeedItems);
+  }, [mergedFeedItems]);
+
+  const totalLooks = feedPosts.length;
   const totalCuratedCategories = EXPLORE_CATEGORIES.length - 1;
 
   const filteredData = useMemo(
-    () => getExploreItemsByCategory(activeCategory, mergedFeedItems),
-    [activeCategory, mergedFeedItems]
+    () => getExploreItemsByCategory(activeCategory, feedPosts),
+    [activeCategory, feedPosts]
   );
 
   const [leftColumnItems, rightColumnItems] = useMemo(
@@ -50,10 +120,56 @@ export default function Explore() {
     setPreviewItem(null);
   };
 
+  const handleCategoryPress = async (category: ExploreCategory) => {
+    setActiveCategory(category);
+
+    if (category === 'All') {
+      return;
+    }
+
+    await recordInteraction([category], 2);
+    await reloadInteractionWeights();
+  };
+
+  const handleOpenPreview = (item: ExploreInspirationItem) => {
+    setPreviewItem(item);
+
+    void recordInteraction(item.categories, 1).then(() => reloadInteractionWeights());
+  };
+
+  const handleToggleSave = async (item: ExploreInspirationItem) => {
+    await toggleSave(item);
+    await recordInteraction(item.categories, 3);
+    await reloadInteractionWeights();
+  };
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+
+    try {
+      await refreshExplorePosts();
+      const weights = await getInteractionWeights();
+      setInteractionWeights(weights);
+      setRefreshKey((prev) => prev + 1);
+    } catch (error) {
+      console.error('Refresh failed:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshExplorePosts]);
+
   return (
     <SafeAreaView className="flex-1 bg-background" style={{ paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0 }}>
       <ScrollView
         contentContainerStyle={{ paddingBottom: 28 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void handleRefresh()}
+            tintColor="#C9A84C"
+            colors={['#C9A84C']}
+          />
+        }
         showsVerticalScrollIndicator={false}>
         <View className="px-4 pt-4 pb-2">
           <View className="overflow-hidden rounded-[30px] border border-border-strong bg-surface-elevated px-5 pt-5 pb-4 shadow-sm shadow-black/10 dark:bg-[#110e0b] dark:shadow-black/30">
@@ -89,7 +205,7 @@ export default function Explore() {
               key={category}
               label={category}
               isActive={activeCategory === category}
-              onPress={() => setActiveCategory(category)}
+              onPress={() => void handleCategoryPress(category)}
             />
           ))}
         </ScrollView>
@@ -102,8 +218,8 @@ export default function Explore() {
                   key={item.id}
                   item={item}
                   isSaved={isSaved(item.id)}
-                  onToggleSave={() => toggleSave(item)}
-                  onPress={() => setPreviewItem(item)}
+                  onToggleSave={() => void handleToggleSave(item)}
+                  onPress={() => handleOpenPreview(item)}
                   variant="feed"
                 />
               ))}
@@ -115,8 +231,8 @@ export default function Explore() {
                   key={item.id}
                   item={item}
                   isSaved={isSaved(item.id)}
-                  onToggleSave={() => toggleSave(item)}
-                  onPress={() => setPreviewItem(item)}
+                  onToggleSave={() => void handleToggleSave(item)}
+                  onPress={() => handleOpenPreview(item)}
                   variant="feed"
                 />
               ))}
@@ -210,7 +326,8 @@ export default function Explore() {
                   borderRadius: 24,
                   backgroundColor: isDark ? '#17120e' : '#efe6da',
                 }}
-                resizeMode="cover"
+                contentFit="cover"
+                cachePolicy="memory-disk"
               />
 
               <View style={{ marginTop: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -226,7 +343,7 @@ export default function Explore() {
                 </Text>
 
                 <TouchableOpacity
-                  onPress={() => toggleSave(previewItem)}
+                  onPress={() => void handleToggleSave(previewItem)}
                   style={{
                     marginLeft: 14,
                     borderRadius: 999,

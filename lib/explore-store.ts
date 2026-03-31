@@ -524,7 +524,8 @@ export async function fetchSharedExplorePosts() {
     .from(EXPLORE_POSTS_TABLE)
     .select('*')
     .eq('is_published', true)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(30);
 
   if (error) {
     throw error;
@@ -573,6 +574,63 @@ export async function fetchSharedExplorePostByReviewSessionId(reviewSessionId: s
   }
 
   return mapExplorePostRow(data as ExplorePostRow);
+}
+
+export async function fetchSharedExplorePostByImageUrl(ownerUserId: string, imageUrl: string) {
+  const normalizedOwnerUserId = ownerUserId.trim();
+  const normalizedImageUrl = imageUrl.trim();
+
+  if (!hasSupabaseConfig || !normalizedOwnerUserId || !normalizedImageUrl) {
+    return null;
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from(EXPLORE_POSTS_TABLE)
+      .select('*')
+      .eq('is_published', true)
+      .eq('user_id', normalizedOwnerUserId)
+      .eq('image_url', normalizedImageUrl)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (error) {
+      throw error;
+    }
+
+    const row = Array.isArray(data) ? data[0] : null;
+
+    if (row) {
+      return mapExplorePostRow(row as ExplorePostRow);
+    }
+
+    return null;
+  } catch (error) {
+    if (!shouldTryAlternateExploreSchema(error)) {
+      throw error;
+    }
+  }
+
+  const { data, error } = await supabase
+    .from(EXPLORE_POSTS_TABLE)
+    .select('*')
+    .eq('is_published', true)
+    .eq('owner_user_id', normalizedOwnerUserId)
+    .eq('image_url', normalizedImageUrl)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (error) {
+    throw error;
+  }
+
+  const row = Array.isArray(data) ? data[0] : null;
+
+  if (!row) {
+    return null;
+  }
+
+  return mapExplorePostRow(row as ExplorePostRow);
 }
 
 export async function fetchSharedExplorePostById(postId: string) {
@@ -757,6 +815,18 @@ export async function saveSharedExplorePost(postId: string, userId: string) {
     throw saveError;
   }
 
+  const { count } = await supabase
+    .from(EXPLORE_POST_SAVES_TABLE)
+    .select('*', { count: 'exact', head: true })
+    .eq('post_id', postId);
+
+  if (typeof count === 'number') {
+    await supabase
+      .from(EXPLORE_POSTS_TABLE)
+      .update({ save_count: count })
+      .eq('id', postId);
+  }
+
   return fetchSharedExplorePost(postId);
 }
 
@@ -787,6 +857,18 @@ export async function unsaveSharedExplorePost(postId: string, userId: string) {
       ...getSupabaseErrorDetails(error),
     });
     throw error;
+  }
+
+  const { count } = await supabase
+    .from(EXPLORE_POST_SAVES_TABLE)
+    .select('*', { count: 'exact', head: true })
+    .eq('post_id', postId);
+
+  if (typeof count === 'number') {
+    await supabase
+      .from(EXPLORE_POSTS_TABLE)
+      .update({ save_count: count })
+      .eq('id', postId);
   }
 
   return fetchSharedExplorePost(postId);

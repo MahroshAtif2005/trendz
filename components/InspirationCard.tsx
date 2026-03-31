@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, Image } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
+import { Image } from 'expo-image';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
 interface InspirationCardProps {
@@ -15,6 +16,7 @@ interface InspirationCardProps {
   onToggleSave?: () => void;
   onPress?: () => void;
   variant?: 'default' | 'feed';
+  disableOuterSpacing?: boolean;
 }
 
 export default function InspirationCard({
@@ -23,6 +25,7 @@ export default function InspirationCard({
   onToggleSave,
   onPress,
   variant = 'default',
+  disableOuterSpacing = false,
 }: InspirationCardProps) {
   const isFeedVariant = variant === 'feed';
   const imageCandidateKey = item.fallbackImageUrls?.join('|') ?? '';
@@ -72,7 +75,7 @@ export default function InspirationCard({
       activeOpacity={0.9}
       className={
         isFeedVariant
-          ? 'mb-1 bg-surface-elevated rounded-[22px] overflow-hidden shadow-sm shadow-black/10 dark:shadow-black/30 border border-border'
+          ? `${disableOuterSpacing ? '' : 'mb-1 '}bg-surface-elevated rounded-[22px] overflow-hidden shadow-sm shadow-black/10 dark:shadow-black/30 border border-border`
           : 'flex-1 m-2 mb-4 bg-surface-elevated rounded-[24px] overflow-hidden shadow-sm shadow-black/5 dark:shadow-black/30 border border-border pb-3'
       }
     >
@@ -80,8 +83,9 @@ export default function InspirationCard({
         {!hasExhaustedSources && activeImageUrl ? (
           <Image
             source={{ uri: activeImageUrl }}
-            className="w-full h-full"
-            style={{ resizeMode: 'cover' }}
+            style={{ width: '100%', height: '100%' }}
+            contentFit="cover"
+            cachePolicy="memory-disk"
             onError={handleImageError}
           />
         ) : (

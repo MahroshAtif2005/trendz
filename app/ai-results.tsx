@@ -217,6 +217,53 @@ function debugExplorePublishLog(message: string, payload?: unknown) {
   console.log(`[ai-results] ${message}`, payload);
 }
 
+function getExplorePromptBlockReasons(params: {
+  isEligibleForExplore: boolean;
+  feedEligible: boolean;
+  imageQualityScore: number;
+  aestheticScore: number;
+  normalizedCategory: string | null;
+  derivedCategories: string[];
+  hasExplorePostPreview: boolean;
+  hasDismissedPostPrompt: boolean;
+}) {
+  const reasons: string[] = [];
+
+  if (!params.isEligibleForExplore) {
+    reasons.push('overall_score_below_8');
+  }
+
+  if (!params.feedEligible) {
+    reasons.push('feed_eligible_false');
+  }
+
+  if (params.imageQualityScore < 7.5) {
+    reasons.push('image_quality_below_7_5');
+  }
+
+  if (params.aestheticScore < 7.5) {
+    reasons.push('aesthetic_below_7_5');
+  }
+
+  if (!params.normalizedCategory) {
+    reasons.push('feed_category_missing_or_not_normalized');
+  }
+
+  if (params.derivedCategories.length === 0) {
+    reasons.push('no_derived_feed_categories');
+  }
+
+  if (!params.hasExplorePostPreview) {
+    reasons.push('explore_post_preview_not_built');
+  }
+
+  if (params.hasDismissedPostPrompt) {
+    reasons.push('prompt_previously_dismissed');
+  }
+
+  return reasons;
+}
+
 export default function AIResults() {
   const appContext = useContext(AppContext);
   const colorScheme = useColorScheme();
@@ -350,6 +397,11 @@ export default function AIResults() {
   }
 
   const { result } = reviewSession;
+  const overallScore = Number(result.overall_score ?? 0);
+  const occasionFit = Number(result.scores?.occasion_fit ?? 0);
+  const trendScore = Number(result.scores?.trend_score ?? 0);
+  const confidence = Number(result.scores?.confidence_score ?? 0);
+  const isEligibleForExplore = !Number.isNaN(overallScore) && overallScore >= 8;
   const feedPromptDecision = getFeedPromptDecision(result);
   const explorePostPreview = buildExplorePostFromReview(reviewSession);
   const hasAlreadyBeenPosted =
@@ -360,14 +412,43 @@ export default function AIResults() {
     ? feedPromptDecision.categories
     : explorePostPreview?.categories ?? [];
   const shouldShowFeedPrompt =
-    result.overall_score > 8 &&
+    isEligibleForExplore &&
     Boolean(explorePostPreview) &&
     !hasDismissedPostPrompt;
+  const explorePromptBlockReasons = getExplorePromptBlockReasons({
+    isEligibleForExplore,
+    feedEligible: result.feed_eligible === true,
+    imageQualityScore: result.image_quality_score,
+    aestheticScore: result.aesthetic_score,
+    normalizedCategory: feedPromptDecision.category,
+    derivedCategories: feedPromptDecision.categories,
+    hasExplorePostPreview: Boolean(explorePostPreview),
+    hasDismissedPostPrompt,
+  });
   const hasAlreadyBeenAddedToEvents =
     Boolean(reviewSession.id) &&
     (appContext?.plannerEvents.some((event) => event.reviewSessionId === reviewSession.id) ?? false);
   const isEventAdded =
     hasAlreadyBeenAddedToEvents || eventConfirmation === 'Added to your Events calendar';
+
+  debugExplorePublishLog('explore CTA diagnostics', {
+    reviewSessionId: reviewSession.id,
+    visibleScore: overallScore,
+    occasionFit,
+    trendScore,
+    confidence,
+    isEligibleForExplore,
+    imageQualityScore: result.image_quality_score,
+    aestheticScore: result.aesthetic_score,
+    feedEligible: result.feed_eligible,
+    rawFeedCategory: result.feed_category,
+    normalizedFeedCategory: feedPromptDecision.category,
+    derivedCategories: feedPromptDecision.categories,
+    hasExplorePostPreview: Boolean(explorePostPreview),
+    shouldShowFeedPrompt,
+    explorePromptBlockReasons,
+    feedReason: result.feed_reason,
+  });
 
   const openEventModal = () => {
     if (isEventAdded) {
@@ -781,6 +862,11 @@ export default function AIResults() {
                   backgroundColor: isExploreAdded ? colors.inviteMutedBackground : colors.buttonBackground,
                   paddingVertical: 16,
                   opacity: isPublishingToExplore ? 0.82 : 1,
+                  shadowColor: isExploreAdded ? 'transparent' : colors.buttonBackground,
+                  shadowOffset: { width: 0, height: 0 },
+                  shadowOpacity: isExploreAdded ? 0 : theme === 'dark' ? 0.52 : 0.24,
+                  shadowRadius: isExploreAdded ? 0 : theme === 'dark' ? 14 : 10,
+                  elevation: isExploreAdded ? 0 : 8,
                 }}>
                 <Text
                   style={{

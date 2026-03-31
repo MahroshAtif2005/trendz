@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useColorScheme as useDeviceColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Session } from '@supabase/supabase-js';
@@ -8,7 +8,7 @@ import {
   deleteSharedExplorePost,
   fetchSavedExplorePostIds,
   fetchSharedExplorePostById,
-  fetchSharedExplorePostByReviewSessionId,
+  fetchSharedExplorePostByImageUrl,
   fetchSharedExplorePosts,
   getExploreOwnerIdentity,
   mapExplorePostToSavedItem,
@@ -190,7 +190,7 @@ const DEFAULT_USER_PROFILE: UserProfile = {
   username: 'janedoe',
   email: 'jane.doe@example.com',
   bio: 'Curating polished looks, elevated neutrals, and occasion-ready outfits.',
-  avatarUri: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&q=80',
+  avatarUri: null,
 };
 
 function isThemeMode(value: string | null): value is ThemeMode {
@@ -902,7 +902,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [localSavedItems, sharedSavedItems]
   );
 
-  const refreshExplorePosts = async () => {
+  const refreshExplorePosts = useCallback(async () => {
     if (!hasSupabaseConfig) {
       return;
     }
@@ -925,7 +925,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.warn('Error loading shared Explore saves:', error);
     }
-  };
+  }, [session?.user?.id, hasSupabaseConfig]);
 
   useEffect(() => {
     if (!hasSupabaseConfig) {
@@ -961,7 +961,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           : await saveSharedExplorePost(item.id, session.user.id);
 
         if (updatedPost) {
-          setExplorePosts((prev) => [updatedPost, ...prev.filter((post) => post.id !== item.id)]);
+          const previousCount = sharedPost.saveCount ?? 0;
+          const correctedPost = {
+            ...updatedPost,
+            saveCount: alreadySaved ? Math.max(0, previousCount - 1) : previousCount + 1,
+          };
+          setExplorePosts((prev) => [correctedPost, ...prev.filter((post) => post.id !== item.id)]);
         }
 
         setSavedExplorePostIds((prev) =>
@@ -1181,18 +1186,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             : 0,
       savedByUserIds: Array.isArray(post.savedByUserIds) ? post.savedByUserIds : [],
     };
+    const normalizedImageUrl = postWithOwner.imageUrl.trim();
+    const matchesExistingImage = (item: UserExplorePost) =>
+      item.ownerUserId === postWithOwner.ownerUserId && item.imageUrl.trim() === normalizedImageUrl;
 
-    if (
-      hasUserExplorePost(postWithOwner.reviewSessionId) ||
-      userExplorePosts.some((item) => item.id === postWithOwner.id) ||
-      explorePosts.some(
-        (item) =>
-          item.id === postWithOwner.id || item.reviewSessionId === postWithOwner.reviewSessionId
-      )
-    ) {
+    if (normalizedImageUrl && (userExplorePosts.some(matchesExistingImage) || explorePosts.some(matchesExistingImage))) {
       debugExploreLog('publish skipped: already published', {
         id: postWithOwner.id,
-        reviewSessionId: postWithOwner.reviewSessionId,
+        imageUrl: normalizedImageUrl,
       });
       return 'already_published';
     }
@@ -1239,14 +1240,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const existingSharedPost = await fetchSharedExplorePostByReviewSessionId(
-        postWithOwner.reviewSessionId
+      const existingSharedPost = await fetchSharedExplorePostByImageUrl(
+        postWithOwner.ownerUserId ?? session.user.id,
+        normalizedImageUrl
       );
 
       if (existingSharedPost) {
-        debugExploreLog('publish skipped: shared review already exists', {
+        debugExploreLog('publish skipped: shared image already exists', {
           id: existingSharedPost.id,
-          reviewSessionId: existingSharedPost.reviewSessionId,
+          imageUrl: existingSharedPost.imageUrl,
         });
         setExplorePosts((prev) => [
           existingSharedPost,
@@ -1304,14 +1306,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       if (isSupabaseUniqueViolation(error)) {
         try {
-          const existingSharedPost = await fetchSharedExplorePostByReviewSessionId(
-            postWithOwner.reviewSessionId
+          const existingSharedPost = await fetchSharedExplorePostByImageUrl(
+            postWithOwner.ownerUserId ?? session.user.id,
+            normalizedImageUrl
           );
 
           if (existingSharedPost) {
-            debugExploreLog('shared publish collided with existing review, reusing post', {
+            debugExploreLog('shared publish collided with existing image, reusing post', {
               id: existingSharedPost.id,
-              reviewSessionId: existingSharedPost.reviewSessionId,
+              imageUrl: existingSharedPost.imageUrl,
             });
             setExplorePosts((prev) => [
               existingSharedPost,

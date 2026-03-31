@@ -38,6 +38,7 @@ function RootLayoutNav() {
           },
         }}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="edit-profile" />
       </Stack>
       <StatusBar style={activeTheme === 'dark' ? 'light' : 'dark'} />
     </ThemeProvider>

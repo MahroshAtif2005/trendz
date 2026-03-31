@@ -32,6 +32,8 @@ export type ExploreInspirationItem = {
   fallbackImageUrls?: string[];
   height: number;
   categories: ExploreTag[];
+  postedAt?: string | null;
+  created_at?: string | null;
 };
 
 const photo = (id: string) =>
@@ -39,7 +41,7 @@ const photo = (id: string) =>
 
 const CATEGORY_FALLBACK_IMAGE_URLS: Record<ExploreTag, string[]> = {
   'Streetwear': [photo('1529139574466-a303027c1d8b'), photo('1721637686340-de9f8cebda5a')],
-  'Baggy / Oversized': [photo('1721111260570-456f3306f8d4'), photo('1763696069136-23a95e615c81')],
+  'Baggy / Oversized': [photo('1721111260570-456f3306f8d4'), photo('1529139574466-a303027c1d8b')],
   'Casual': [photo('1502163140606-888448ae8adb'), photo('1488426862026-3ee34a7d66df')],
   'Airport Style': [photo('1693614076723-f96c711cbc4f'), photo('1754746804782-fcf470a9b5e7')],
   'Sporty Chic': [photo('1551488831-00ddcb6c6bd3'), photo('1617137968427-85924c800a22')],
@@ -698,22 +700,6 @@ const RAW_EXPLORE_FEED_ITEMS: ExploreInspirationItem[] = [
     categories: ['Baggy / Oversized', 'Casual', 'Streetwear'],
   },
   {
-    id: '79',
-    title: 'Riverfront cargo sunglasses',
-    vibe: 'Sporty street uniform',
-    imageUrl: photo('1763696069136-23a95e615c81'),
-    height: 330,
-    categories: ['Baggy / Oversized', 'Streetwear', 'Sporty Chic'],
-  },
-  {
-    id: '80',
-    title: 'Moto cargo off-duty pose',
-    vibe: 'Relaxed utility edge',
-    imageUrl: photo('1763696069598-6e74f9335601'),
-    height: 308,
-    categories: ['Baggy / Oversized', 'Streetwear', 'Sporty Chic'],
-  },
-  {
     id: '81',
     title: 'Wide-leg pink utility set',
     vibe: 'Playful oversized ease',
@@ -756,7 +742,12 @@ const RAW_EXPLORE_FEED_ITEMS: ExploreInspirationItem[] = [
 ];
 
 function normalizeImageUrl(url: string) {
-  return url.trim().toLowerCase().split('?')[0];
+  return url
+    .trim()
+    .toLowerCase()
+    .split('#')[0]
+    .split('?')[0]
+    .replace(/\/+$/, '');
 }
 
 function dedupeImageUrls(urls: string[]) {
@@ -843,7 +834,14 @@ function buildMixedAllFeed(items: ExploreInspirationItem[]) {
 }
 
 export function finalizeExploreFeedItems(items: ExploreInspirationItem[]) {
-  return dedupeExploreFeedItems(items).map(attachFallbackImageUrls);
+  const now = Date.now();
+  const dayMs = 24 * 60 * 60 * 1000;
+
+  return dedupeExploreFeedItems(items).map(attachFallbackImageUrls).map((item, index) => ({
+    ...item,
+    postedAt: item.postedAt ?? new Date(now - index * dayMs).toISOString(),
+    created_at: item.created_at ?? new Date(now - index * dayMs).toISOString(),
+  }));
 }
 
 export function mergeExploreFeedItems(...collections: ExploreInspirationItem[][]) {

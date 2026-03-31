@@ -1,10 +1,9 @@
-import { ComponentProps, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
   Platform,
-  Pressable,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -26,26 +25,180 @@ function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+type EditProfileFieldProps = {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder: string;
+  placeholderTextColor: string;
+  primaryTextStyle: { color: string };
+  secondaryTextStyle: { color: string };
+  inputSurfaceStyle: {
+    backgroundColor: string;
+    borderColor: string;
+  };
+  helperText?: string;
+  prefix?: string;
+  editable?: boolean;
+  multiline?: boolean;
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  autoCorrect?: boolean;
+  keyboardType?: 'default' | 'email-address';
+};
+
+function EditProfileField({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  placeholderTextColor,
+  primaryTextStyle,
+  secondaryTextStyle,
+  inputSurfaceStyle,
+  helperText,
+  prefix,
+  editable = true,
+  multiline = false,
+  autoCapitalize = 'sentences',
+  autoCorrect = true,
+  keyboardType = 'default',
+}: EditProfileFieldProps) {
+  return (
+    <View style={{ marginTop: 20 }}>
+      <Text
+        style={[
+          secondaryTextStyle,
+          {
+            marginBottom: 8,
+            marginLeft: 4,
+            fontSize: 12,
+            fontWeight: '700',
+            letterSpacing: 1.4,
+            textTransform: 'uppercase',
+          },
+        ]}>
+        {label}
+      </Text>
+
+      <View
+        style={[
+          inputSurfaceStyle,
+          {
+            flexDirection: 'row',
+            alignItems: multiline ? 'flex-start' : 'center',
+            borderWidth: 1,
+            borderRadius: 22,
+            paddingHorizontal: 18,
+            paddingVertical: multiline ? 16 : 0,
+            minHeight: multiline ? 120 : 58,
+            opacity: editable ? 1 : 0.82,
+          },
+        ]}>
+        {prefix ? (
+          <Text
+            style={[
+              secondaryTextStyle,
+              {
+                marginRight: 8,
+                marginTop: multiline ? 2 : 0,
+                fontSize: 16,
+                fontWeight: '700',
+              },
+            ]}>
+            {prefix}
+          </Text>
+        ) : null}
+
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={placeholderTextColor}
+          editable={editable}
+          multiline={multiline}
+          textAlignVertical={multiline ? 'top' : 'center'}
+          autoCapitalize={autoCapitalize}
+          autoCorrect={autoCorrect}
+          keyboardType={keyboardType}
+          style={[
+            primaryTextStyle,
+            {
+              flex: 1,
+              fontSize: 16,
+              minHeight: multiline ? 88 : 56,
+              paddingVertical: multiline ? 0 : 0,
+            },
+          ]}
+        />
+      </View>
+
+      {helperText ? (
+        <Text
+          style={[
+            secondaryTextStyle,
+            {
+              marginTop: 8,
+              marginLeft: 4,
+              fontSize: 13,
+              lineHeight: 20,
+            },
+          ]}>
+          {helperText}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 export default function EditProfile() {
   const { activeTheme, session, userProfile, updateUserProfile } = useApp();
-  const [fullName, setFullName] = useState(userProfile.fullName);
-  const [username, setUsername] = useState(userProfile.username);
-  const [email, setEmail] = useState(userProfile.email);
-  const [bio, setBio] = useState(userProfile.bio);
-  const [avatarUri, setAvatarUri] = useState<string | null>(userProfile.avatarUri);
-  const [isPhotoPickerVisible, setIsPhotoPickerVisible] = useState(false);
+  const safeProfile = useMemo(
+    () => ({
+      fullName: userProfile?.fullName ?? '',
+      username: userProfile?.username ?? '',
+      email: userProfile?.email ?? '',
+      bio: userProfile?.bio ?? '',
+      avatarUri: userProfile?.avatarUri ?? null,
+    }),
+    [userProfile]
+  );
+
+  const [fullName, setFullName] = useState(safeProfile.fullName);
+  const [username, setUsername] = useState(safeProfile.username);
+  const [email, setEmail] = useState(safeProfile.email);
+  const [bio, setBio] = useState(safeProfile.bio);
+  const [avatarUri, setAvatarUri] = useState<string | null>(safeProfile.avatarUri);
   const [isSaving, setIsSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const isDark = activeTheme === 'dark';
-  const emailIsEditable = !session?.user?.email;
 
   useEffect(() => {
-    setFullName(userProfile.fullName);
-    setUsername(userProfile.username);
-    setEmail(userProfile.email);
-    setBio(userProfile.bio);
-    setAvatarUri(userProfile.avatarUri);
-  }, [userProfile]);
+    setFullName(safeProfile.fullName);
+    setUsername(safeProfile.username);
+    setEmail(safeProfile.email);
+    setBio(safeProfile.bio);
+    setAvatarUri(safeProfile.avatarUri);
+  }, [safeProfile]);
+
+  const isDark = activeTheme === 'dark';
+  const emailIsEditable = !session?.user?.email;
+  const normalizedUsername = normalizeUsername(username);
+  const initials = useMemo(() => {
+    const source = (fullName || safeProfile.fullName || 'Trendz Member').trim();
+    const letters = source
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((part) => part[0]?.toUpperCase() ?? '')
+      .join('');
+
+    return letters.slice(0, 2) || 'T';
+  }, [fullName, safeProfile.fullName]);
+
+  const hasChanges =
+    fullName.trim() !== safeProfile.fullName ||
+    normalizedUsername !== safeProfile.username ||
+    bio.trim() !== safeProfile.bio ||
+    avatarUri !== safeProfile.avatarUri ||
+    (emailIsEditable && email.trim().toLowerCase() !== safeProfile.email.toLowerCase());
 
   const pageBackgroundStyle = { backgroundColor: isDark ? '#050505' : '#fcfaf6' };
   const heroStyle = {
@@ -68,28 +221,50 @@ export default function EditProfile() {
   const secondaryTextStyle = { color: isDark ? '#dfccb0' : '#6f5b46' };
   const eyebrowTextStyle = { color: isDark ? '#d8bb84' : '#b98c49' };
   const placeholderTextColor = isDark ? '#bca78a' : '#8b7761';
-  const initials = useMemo(
-    () =>
-      (fullName || userProfile.fullName)
-        .split(' ')
-        .map((part) => part[0])
-        .join('')
-        .slice(0, 2)
-        .toUpperCase() || 'T',
-    [fullName, userProfile.fullName]
-  );
-  const normalizedUsername = normalizeUsername(username);
-  const hasChanges =
-    fullName.trim() !== userProfile.fullName ||
-    normalizedUsername !== userProfile.username ||
-    bio.trim() !== userProfile.bio ||
-    avatarUri !== userProfile.avatarUri ||
-    (emailIsEditable && email.trim().toLowerCase() !== userProfile.email.toLowerCase());
 
-  const handleImageResult = async (resultPromise: Promise<ImagePicker.ImagePickerResult>) => {
+  const handleChooseCamera = async () => {
     try {
-      const result = await resultPromise;
-      const asset = result.canceled ? null : result.assets[0];
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+
+      if (!permission.granted) {
+        Alert.alert('Camera access needed', 'Allow camera access to take a new profile photo.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.9,
+      });
+
+      const asset = result.canceled ? null : result.assets?.[0];
+
+      if (asset?.uri) {
+        setAvatarUri(asset.uri);
+        setFormError(null);
+      }
+    } catch (error) {
+      console.warn('Error capturing profile image:', error);
+      Alert.alert('Unable to update photo', 'Please try again.');
+    }
+  };
+
+  const handleChooseGallery = async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permission.granted) {
+        Alert.alert('Photo access needed', 'Allow photo library access to choose a profile image.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.9,
+      });
+
+      const asset = result.canceled ? null : result.assets?.[0];
 
       if (asset?.uri) {
         setAvatarUri(asset.uri);
@@ -98,48 +273,15 @@ export default function EditProfile() {
     } catch (error) {
       console.warn('Error choosing profile image:', error);
       Alert.alert('Unable to update photo', 'Please try again.');
-    } finally {
-      setIsPhotoPickerVisible(false);
     }
   };
 
-  const openCamera = async () => {
-    setIsPhotoPickerVisible(false);
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-
-    if (!permission.granted) {
-      Alert.alert('Camera access needed', 'Allow camera access to take a new profile photo.');
-      return;
-    }
-
-    await handleImageResult(
-      ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.9,
-        cameraType: ImagePicker.CameraType.front,
-      })
-    );
-  };
-
-  const openGallery = async () => {
-    setIsPhotoPickerVisible(false);
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (!permission.granted) {
-      Alert.alert('Photo access needed', 'Allow photo library access to choose a profile image.');
-      return;
-    }
-
-    await handleImageResult(
-      ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.9,
-      })
-    );
+  const openPhotoOptions = () => {
+    Alert.alert('Update profile photo', 'Choose where to pick your new profile image from.', [
+      { text: 'Camera', onPress: () => void handleChooseCamera() },
+      { text: 'Photo Library', onPress: () => void handleChooseGallery() },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
 
   const handleSave = async () => {
@@ -165,330 +307,349 @@ export default function EditProfile() {
     setIsSaving(true);
     setFormError(null);
 
-    updateUserProfile({
-      fullName: trimmedFullName,
-      username: normalizedUsername,
-      bio: trimmedBio,
-      avatarUri,
-      ...(emailIsEditable ? { email: sanitizedEmail } : {}),
-    });
+    try {
+      updateUserProfile({
+        fullName: trimmedFullName,
+        username: normalizedUsername,
+        bio: trimmedBio,
+        avatarUri,
+        ...(emailIsEditable ? { email: sanitizedEmail } : {}),
+      });
 
-    setIsSaving(false);
-    router.back();
+      router.back();
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <SafeAreaView
-      className="flex-1 bg-background"
       style={[
         pageBackgroundStyle,
-        { paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0 },
-      ]}
-    >
-      <View className="flex-1">
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 120, paddingTop: 12 }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <View className="pb-4">
-            <View className="flex-row items-center justify-between">
-              <TouchableOpacity
-                activeOpacity={0.86}
-                className="flex-row items-center rounded-full border border-border-strong px-4 py-3 bg-surface-elevated"
-                style={cardStyle}
-                onPress={() => router.back()}
-              >
-                <MaterialCommunityIcons name="arrow-left" size={18} color={isDark ? '#e4d3b6' : '#6f5b46'} />
-                <Text className="ml-2 font-sans text-[14px] font-semibold tracking-[0.08em]" style={primaryTextStyle}>
-                  Back
-                </Text>
-              </TouchableOpacity>
+        {
+          flex: 1,
+          paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+        },
+      ]}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 120 }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}>
+        <View style={{ paddingBottom: 16 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <TouchableOpacity
+              activeOpacity={0.86}
+              onPress={() => router.back()}
+              style={[
+                cardStyle,
+                {
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  borderWidth: 1,
+                  borderRadius: 999,
+                  paddingHorizontal: 16,
+                  paddingVertical: 12,
+                },
+              ]}>
+              <MaterialCommunityIcons
+                name="arrow-left"
+                size={18}
+                color={isDark ? '#e4d3b6' : '#6f5b46'}
+              />
+              <Text
+                style={[
+                  primaryTextStyle,
+                  {
+                    marginLeft: 8,
+                    fontSize: 14,
+                    fontWeight: '700',
+                    letterSpacing: 1,
+                  },
+                ]}>
+                Back
+              </Text>
+            </TouchableOpacity>
 
-              <TouchableOpacity
-                activeOpacity={0.86}
-                disabled={!hasChanges || isSaving}
-                className={`rounded-full border px-5 py-3 ${!hasChanges || isSaving ? 'opacity-60' : ''}`}
-                style={hasChanges ? { backgroundColor: '#d7bb85', borderColor: '#d7bb85' } : cardStyle}
-                onPress={handleSave}
-              >
-                {isSaving ? (
-                  <ActivityIndicator size="small" color="#1a130d" />
+            <TouchableOpacity
+              activeOpacity={0.86}
+              disabled={!hasChanges || isSaving}
+              onPress={handleSave}
+              style={[
+                hasChanges
+                  ? { backgroundColor: '#d7bb85', borderColor: '#d7bb85' }
+                  : cardStyle,
+                {
+                  borderWidth: 1,
+                  borderRadius: 999,
+                  paddingHorizontal: 20,
+                  paddingVertical: 12,
+                  opacity: !hasChanges || isSaving ? 0.6 : 1,
+                },
+              ]}>
+              {isSaving ? (
+                <ActivityIndicator size="small" color="#1a130d" />
+              ) : (
+                <Text
+                  style={{
+                    color: hasChanges ? '#1a130d' : isDark ? '#e4d3b6' : '#6f5b46',
+                    fontSize: 14,
+                    fontWeight: '700',
+                    letterSpacing: 1,
+                  }}>
+                  Save
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View
+          style={[
+            heroStyle,
+            {
+              overflow: 'hidden',
+              borderWidth: 1,
+              borderRadius: 30,
+              paddingHorizontal: 24,
+              paddingTop: 24,
+              paddingBottom: 24,
+            },
+          ]}>
+          <View
+            style={{
+              position: 'absolute',
+              right: -20,
+              top: -10,
+              height: 96,
+              width: 96,
+              borderRadius: 999,
+              backgroundColor: 'rgba(212, 175, 106, 0.1)',
+            }}
+          />
+
+          <Text
+            style={[
+              eyebrowTextStyle,
+              { fontSize: 11, fontWeight: '700', letterSpacing: 3.2, textTransform: 'uppercase' },
+            ]}>
+            Edit Your Identity
+          </Text>
+          <Text
+            style={[
+              primaryTextStyle,
+              { marginTop: 12, fontSize: 34, fontWeight: '700', letterSpacing: -0.6 },
+            ]}>
+            Edit Profile
+          </Text>
+          <Text
+            style={[
+              secondaryTextStyle,
+              { marginTop: 12, fontSize: 15, lineHeight: 24 },
+            ]}>
+            Update the details that appear across Trendz and keep your profile looking polished.
+          </Text>
+
+          <View style={{ marginTop: 28, alignItems: 'center' }}>
+            <TouchableOpacity activeOpacity={0.9} onPress={openPhotoOptions} style={{ alignItems: 'center' }}>
+              <View style={{ position: 'relative' }}>
+                <View
+                  style={{
+                    position: 'absolute',
+                    top: -4,
+                    right: -4,
+                    bottom: -4,
+                    left: -4,
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: 'rgba(212, 175, 106, 0.2)',
+                  }}
+                />
+
+                {avatarUri ? (
+                  <Image
+                    source={{ uri: avatarUri }}
+                    style={{
+                      height: 128,
+                      width: 128,
+                      borderRadius: 999,
+                      borderWidth: 4,
+                      borderColor: isDark ? '#15110e' : '#fbf6ef',
+                      backgroundColor: isDark ? '#15110e' : '#f8f2e8',
+                    }}
+                  />
                 ) : (
-                  <Text
-                    className="font-sans text-[14px] font-semibold tracking-[0.08em]"
-                    style={{ color: hasChanges ? '#1a130d' : isDark ? '#e4d3b6' : '#6f5b46' }}
-                  >
-                    Save
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <View
-            className="rounded-[30px] border border-border-strong px-6 pb-6 pt-6 shadow-sm shadow-black/10 dark:shadow-black/30"
-            style={heroStyle}
-          >
-            <View className="absolute -right-5 -top-3 h-24 w-24 rounded-full bg-primary/10" />
-
-            <Text className="text-[11px] font-sans font-semibold uppercase tracking-[0.3em]" style={eyebrowTextStyle}>
-              Edit Your Identity
-            </Text>
-            <Text className="mt-3 text-[34px] font-sans font-semibold tracking-tight" style={primaryTextStyle}>
-              Edit Profile
-            </Text>
-            <Text className="mt-3 text-[15px] leading-6 font-sans" style={secondaryTextStyle}>
-              Update the details that appear across Trendz and keep your profile looking polished.
-            </Text>
-
-            <View className="mt-7 items-center">
-              <TouchableOpacity activeOpacity={0.9} className="items-center" onPress={() => setIsPhotoPickerVisible(true)}>
-                <View className="relative">
-                  <View className="absolute -inset-1 rounded-full border border-primary/20" />
-                  {avatarUri ? (
-                    <Image
-                      source={{ uri: avatarUri }}
-                      className="h-32 w-32 rounded-full border-4 border-surface-elevated"
-                      style={{ backgroundColor: isDark ? '#15110e' : '#f8f2e8' }}
-                    />
-                  ) : (
-                    <View
-                      className="h-32 w-32 items-center justify-center rounded-full border-4 border-surface-elevated"
-                      style={cardStyle}
-                    >
-                      <Text className="text-[36px] font-sans font-semibold tracking-[0.08em]" style={primaryTextStyle}>
-                        {initials}
-                      </Text>
-                    </View>
-                  )}
-
-                  <View className="absolute bottom-1 right-1 h-11 w-11 items-center justify-center rounded-full border-4 border-background bg-primary">
-                    <MaterialCommunityIcons name="camera-outline" size={19} color="#1a130d" />
+                  <View
+                    style={[
+                      cardStyle,
+                      {
+                        height: 128,
+                        width: 128,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderRadius: 999,
+                        borderWidth: 4,
+                        borderColor: isDark ? '#15110e' : '#fbf6ef',
+                      },
+                    ]}>
+                    <Text style={[primaryTextStyle, { fontSize: 36, fontWeight: '700', letterSpacing: 3 }]}>
+                      {initials}
+                    </Text>
                   </View>
+                )}
+
+                <View
+                  style={{
+                    position: 'absolute',
+                    right: 4,
+                    bottom: 4,
+                    height: 42,
+                    width: 42,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: 999,
+                    borderWidth: 3,
+                    borderColor: isDark ? '#120f0c' : '#f6efe5',
+                    backgroundColor: '#d7bb85',
+                  }}>
+                  <MaterialCommunityIcons name="camera-outline" size={18} color="#1a130d" />
                 </View>
+              </View>
 
-                <Text className="mt-4 text-[13px] font-sans font-semibold uppercase tracking-[0.18em]" style={eyebrowTextStyle}>
-                  Change Photo
-                </Text>
-              </TouchableOpacity>
-            </View>
+              <Text
+                style={[
+                  eyebrowTextStyle,
+                  {
+                    marginTop: 16,
+                    fontSize: 13,
+                    fontWeight: '700',
+                    letterSpacing: 2,
+                    textTransform: 'uppercase',
+                  },
+                ]}>
+                Change Photo
+              </Text>
+            </TouchableOpacity>
           </View>
+        </View>
 
-          {formError ? (
-            <View className="mt-5 rounded-[22px] border border-[#7a433d] bg-[#251311] px-4 py-4">
-              <Text className="font-sans text-[14px] leading-6 text-[#ffb6aa]">{formError}</Text>
-            </View>
-          ) : null}
-
+        {formError ? (
           <View
-            className="mt-6 rounded-[30px] border border-border-strong px-5 pb-6 pt-5 shadow-sm shadow-black/5 dark:shadow-black/25"
-            style={cardStyle}
-          >
-            <Text className="text-[11px] font-sans font-semibold uppercase tracking-[0.3em]" style={eyebrowTextStyle}>
-              Personal Details
-            </Text>
-
-            <ProfileField
-              label="Full Name"
-              value={fullName}
-              onChangeText={setFullName}
-              placeholder="Enter your full name"
-              placeholderTextColor={placeholderTextColor}
-              primaryTextStyle={primaryTextStyle}
-              secondaryTextStyle={secondaryTextStyle}
-              inputStyle={inputStyle}
-            />
-
-            <ProfileField
-              label="Username"
-              value={username}
-              onChangeText={(value) => setUsername(value.replace(/^@+/, ''))}
-              placeholder="@trendzuser"
-              autoCapitalize="none"
-              autoCorrect={false}
-              placeholderTextColor={placeholderTextColor}
-              primaryTextStyle={primaryTextStyle}
-              secondaryTextStyle={secondaryTextStyle}
-              inputStyle={inputStyle}
-              prefix="@"
-            />
-
-            <ProfileField
-              label="Email"
-              value={email}
-              onChangeText={setEmail}
-              placeholder="Email address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-              editable={emailIsEditable}
-              placeholderTextColor={placeholderTextColor}
-              primaryTextStyle={primaryTextStyle}
-              secondaryTextStyle={secondaryTextStyle}
-              inputStyle={emailIsEditable ? inputStyle : readOnlyInputStyle}
-              helperText={emailIsEditable ? undefined : 'Your sign-in email is managed through your account auth.'}
-            />
-
-            <ProfileField
-              label="Bio"
-              value={bio}
-              onChangeText={setBio}
-              placeholder="A short line about your style."
-              placeholderTextColor={placeholderTextColor}
-              primaryTextStyle={primaryTextStyle}
-              secondaryTextStyle={secondaryTextStyle}
-              inputStyle={inputStyle}
-              multiline
-            />
-          </View>
-
-          <TouchableOpacity
-            activeOpacity={0.9}
-            disabled={!hasChanges || isSaving}
-            className={`mt-6 rounded-[22px] px-6 py-4 shadow-sm shadow-black/5 dark:shadow-black/25 ${!hasChanges || isSaving ? 'opacity-60' : ''}`}
-            style={{ backgroundColor: '#d7bb85' }}
-            onPress={handleSave}
-          >
-            <Text className="text-center font-sans text-[15px] font-semibold tracking-[0.08em]" style={{ color: '#1a130d' }}>
-              {isSaving ? 'Saving Changes...' : 'Save Changes'}
-            </Text>
-          </TouchableOpacity>
-        </ScrollView>
-
-        {isPhotoPickerVisible ? (
-          <View className="absolute inset-0 justify-end">
-            <Pressable className="absolute inset-0 bg-black/65" onPress={() => setIsPhotoPickerVisible(false)} />
-            <View
-              className="mx-4 mb-4 rounded-[28px] border border-border-strong px-5 pb-5 pt-5 shadow-lg shadow-black/30"
-              style={heroStyle}
-            >
-              <Text className="text-[22px] font-sans font-semibold tracking-tight" style={primaryTextStyle}>
-                Update profile photo
-              </Text>
-              <Text className="mt-2 text-[14px] leading-6 font-sans" style={secondaryTextStyle}>
-                Choose a clean portrait or outfit-led image that fits your Trendz profile.
-              </Text>
-
-              <PhotoActionRow
-                icon="camera-outline"
-                label="Take Photo"
-                iconTint={isDark ? '#e4c98f' : '#b98c49'}
-                iconSurface={isDark ? '#241b12' : '#f6eddf'}
-                surfaceStyle={cardStyle}
-                textStyle={primaryTextStyle}
-                onPress={openCamera}
-              />
-              <PhotoActionRow
-                icon="image-outline"
-                label="Choose from Gallery"
-                iconTint={isDark ? '#d8c3a4' : '#8b7761'}
-                iconSurface={isDark ? '#1e1814' : '#efe5da'}
-                surfaceStyle={cardStyle}
-                textStyle={primaryTextStyle}
-                onPress={openGallery}
-              />
-            </View>
+            style={{
+              marginTop: 20,
+              borderRadius: 22,
+              borderWidth: 1,
+              borderColor: '#7a433d',
+              backgroundColor: '#251311',
+              paddingHorizontal: 16,
+              paddingVertical: 16,
+            }}>
+            <Text style={{ color: '#ffb6aa', fontSize: 14, lineHeight: 22 }}>{formError}</Text>
           </View>
         ) : null}
-      </View>
+
+        <View
+          style={[
+            cardStyle,
+            {
+              marginTop: 24,
+              borderWidth: 1,
+              borderRadius: 30,
+              paddingHorizontal: 20,
+              paddingTop: 20,
+              paddingBottom: 24,
+            },
+          ]}>
+          <Text
+            style={[
+              eyebrowTextStyle,
+              { fontSize: 11, fontWeight: '700', letterSpacing: 3.2, textTransform: 'uppercase' },
+            ]}>
+            Personal Details
+          </Text>
+
+          <EditProfileField
+            label="Full Name"
+            value={fullName}
+            onChangeText={setFullName}
+            placeholder="Enter your full name"
+            placeholderTextColor={placeholderTextColor}
+            primaryTextStyle={primaryTextStyle}
+            secondaryTextStyle={secondaryTextStyle}
+            inputSurfaceStyle={inputStyle}
+          />
+
+          <EditProfileField
+            label="Username"
+            value={username}
+            onChangeText={(value) => setUsername(value.replace(/^@+/, ''))}
+            placeholder="trendzuser"
+            placeholderTextColor={placeholderTextColor}
+            primaryTextStyle={primaryTextStyle}
+            secondaryTextStyle={secondaryTextStyle}
+            inputSurfaceStyle={inputStyle}
+            prefix="@"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+
+          <EditProfileField
+            label="Email"
+            value={email}
+            onChangeText={setEmail}
+            placeholder="Email address"
+            placeholderTextColor={placeholderTextColor}
+            primaryTextStyle={primaryTextStyle}
+            secondaryTextStyle={secondaryTextStyle}
+            inputSurfaceStyle={emailIsEditable ? inputStyle : readOnlyInputStyle}
+            editable={emailIsEditable}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            helperText={
+              emailIsEditable
+                ? undefined
+                : 'Your sign-in email is managed through your account auth.'
+            }
+          />
+
+          <EditProfileField
+            label="Bio"
+            value={bio}
+            onChangeText={setBio}
+            placeholder="A short line about your style."
+            placeholderTextColor={placeholderTextColor}
+            primaryTextStyle={primaryTextStyle}
+            secondaryTextStyle={secondaryTextStyle}
+            inputSurfaceStyle={inputStyle}
+            multiline
+          />
+        </View>
+
+        <TouchableOpacity
+          activeOpacity={0.9}
+          disabled={!hasChanges || isSaving}
+          onPress={handleSave}
+          style={{
+            marginTop: 24,
+            borderRadius: 22,
+            backgroundColor: '#d7bb85',
+            paddingHorizontal: 24,
+            paddingVertical: 16,
+            opacity: !hasChanges || isSaving ? 0.6 : 1,
+          }}>
+          <Text
+            style={{
+              textAlign: 'center',
+              color: '#1a130d',
+              fontSize: 15,
+              fontWeight: '700',
+              letterSpacing: 1,
+            }}>
+            {isSaving ? 'Saving Changes...' : 'Save Changes'}
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
     </SafeAreaView>
-  );
-}
-
-function ProfileField({
-  label,
-  helperText,
-  inputStyle,
-  primaryTextStyle,
-  secondaryTextStyle,
-  prefix,
-  multiline = false,
-  ...inputProps
-}: {
-  label: string;
-  helperText?: string;
-  inputStyle?: object;
-  primaryTextStyle: object;
-  secondaryTextStyle: object;
-  prefix?: string;
-  multiline?: boolean;
-  value: string;
-  onChangeText: (value: string) => void;
-  placeholder: string;
-  placeholderTextColor: string;
-  editable?: boolean;
-  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
-  autoCorrect?: boolean;
-  keyboardType?: 'default' | 'email-address';
-}) {
-  return (
-    <View className="mt-5">
-      <Text className="mb-2 ml-1 text-[12px] font-sans font-semibold uppercase tracking-[0.16em]" style={secondaryTextStyle}>
-        {label}
-      </Text>
-
-      <View
-        className={`flex-row rounded-[22px] border border-border-strong px-5 ${multiline ? 'items-start py-4' : 'items-center py-1'}`}
-        style={inputStyle}
-      >
-        {prefix ? (
-          <View className="mr-2 mt-3">
-            <Text className="font-sans text-[16px] font-semibold" style={secondaryTextStyle}>
-              {prefix}
-            </Text>
-          </View>
-        ) : null}
-
-        <TextInput
-          className={`font-sans text-[16px] ${multiline ? 'min-h-[110px] py-0' : 'h-14 flex-1'} ${prefix ? '' : 'px-0'}`}
-          multiline={multiline}
-          textAlignVertical={multiline ? 'top' : 'center'}
-          style={[primaryTextStyle, prefix ? { flex: 1 } : null, !prefix && !multiline ? { width: '100%' } : null]}
-          {...inputProps}
-        />
-      </View>
-
-      {helperText ? (
-        <Text className="mt-2 ml-1 text-[13px] leading-5 font-sans" style={secondaryTextStyle}>
-          {helperText}
-        </Text>
-      ) : null}
-    </View>
-  );
-}
-
-function PhotoActionRow({
-  icon,
-  label,
-  iconTint,
-  iconSurface,
-  surfaceStyle,
-  textStyle,
-  onPress,
-}: {
-  icon: ComponentProps<typeof MaterialCommunityIcons>['name'];
-  label: string;
-  iconTint: string;
-  iconSurface: string;
-  surfaceStyle?: object;
-  textStyle: object;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity
-      activeOpacity={0.88}
-      className="mt-4 flex-row items-center rounded-[22px] border border-border-strong px-4 py-4"
-      style={surfaceStyle}
-      onPress={onPress}
-    >
-      <View className="mr-4 h-12 w-12 items-center justify-center rounded-full border border-border-strong" style={{ backgroundColor: iconSurface }}>
-        <MaterialCommunityIcons name={icon} size={22} color={iconTint} />
-      </View>
-      <Text className="font-sans text-[16px] font-semibold tracking-tight" style={textStyle}>
-        {label}
-      </Text>
-    </TouchableOpacity>
   );
 }
